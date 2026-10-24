@@ -1,0 +1,42 @@
+# Build artifacts
+**/build/
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Crash & debug logs
+*.log
+hs_err_pid*.log
+replay_pid*.log
+err.txt
+out.txt
+*.tmp
+
+# Temporary screenshot captures
+use_advance_picture_dictionary_app/current_desktop.png
+use_advance_picture_dictionary_app/flutter_01.png
+use_advance_picture_dictionary_app/run_err.txt
+use_advance_picture_dictionary_app/run_out.txt
+use_advance_picture_dictionary_app/windows_boot.log
+use_advance_picture_dictionary_app/enum_all.ps1
+use_advance_picture_dictionary_app/enum_threads.ps1
+use_advance_picture_dictionary_app/test_find_win.ps1
+
+# Android build outputs
+android/app/debug/
+android/app/profile/
+android/app/release/
+.gradle/
+local.properties
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "105971080286",
+    "project_id": "use-advance-picture-dict-1861e",
+    "storage_bucket": "use-advance-picture-dict-1861e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:105971080286:android:e2f08d09652f842ca068cf",
+        "android_client_info": {
+          "package_name": "com.useadvance.use_advance_picture_dictionary_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdb5Br9FDQkl3DPWV0raSNBnuK0zpOk60"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

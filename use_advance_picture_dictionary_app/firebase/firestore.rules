@@ -1,0 +1,53 @@
+﻿rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper: Check if user is admin
+    function isAdmin() {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/sync_admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/sync_admins/$(request.auth.uid)).data.active == true;
+    }
+    
+    // Dictionary entries (shared with USE Advance Dictionary)
+    match /dictionary_entries/{entryId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    
+    // Daily sentences (shared with USE Advance Dictionary)
+    match /daily_sentences/{sentenceId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    
+    // Picture dictionary entries
+    match /picture_entries/{entryId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    
+    // Admin whitelist
+    match /sync_admins/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+    
+    // Analytics collections (word_views & sentence_views)
+    match /word_views/{docId} {
+      allow create, read: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+    
+    match /sentence_views/{docId} {
+      allow create, read: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+    
+    // Deny any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
