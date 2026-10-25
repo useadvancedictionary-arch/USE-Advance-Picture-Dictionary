@@ -40,3 +40,9 @@ local.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# .NET build directories
+**/ocr_tool/bin/
+**/ocr_tool/obj/
+use_advance_picture_dictionary_app/bin/
+use_advance_picture_dictionary_app/windows/runner/ocr_tool.exe

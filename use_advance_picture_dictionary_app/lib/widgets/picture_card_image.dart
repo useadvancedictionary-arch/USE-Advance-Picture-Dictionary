@@ -43,7 +43,12 @@ class PictureCardImage extends StatelessWidget {
     }
 
     // 2. Local File System Path (saved on disk)
-    if (!kIsWeb && (cleanUrl.startsWith('/') || cleanUrl.contains(':\\') || cleanUrl.startsWith('file://'))) {
+    if (!kIsWeb &&
+        (cleanUrl.startsWith('/') ||
+         cleanUrl.contains(':\\') ||
+         cleanUrl.contains(':/') ||
+         cleanUrl.startsWith('file://') ||
+         RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(cleanUrl))) {
       final filePath = cleanUrl.replaceFirst('file://', '');
       final file = File(filePath);
       if (file.existsSync()) {

@@ -6,6 +6,8 @@ import '../services/interlink_service.dart';
 import 'picture_word_detail_screen.dart';
 import 'picture_quiz_screen.dart';
 import 'bulk_import_screen.dart';
+import 'grid_picture_import_screen.dart';
+import 'about_info_accordion_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -184,6 +186,21 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
+            tooltip: 'Split & Assign Grid Pictures',
+            icon: const Icon(Icons.grid_on_rounded),
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const GridPictureImportScreen()),
+              );
+              if (result == true) {
+                _searchController.clear();
+                _selectedCategory = 'All';
+                await _loadData();
+              }
+            },
+          ),
+          IconButton(
             tooltip: 'Import Excel / CSV Vocabulary',
             icon: const Icon(Icons.file_upload_outlined),
             onPressed: () async {
@@ -203,6 +220,16 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.menu_book_rounded),
             onPressed: () {
               InterlinkService.instance.openInAdvanceDictionary(context, 'dictionary');
+            },
+          ),
+          IconButton(
+            tooltip: 'About, Help & Policies',
+            icon: const Icon(Icons.info_outline_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutInfoAccordionScreen()),
+              );
             },
           ),
         ],

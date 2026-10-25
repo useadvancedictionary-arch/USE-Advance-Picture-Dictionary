@@ -51,6 +51,7 @@ dependencies:
   firebase_core: ^4.9.0
   cloud_firestore: ^6.4.1
   firebase_auth: ^6.5.1
+  desktop_drop: ^0.8.0
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +63,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  msix: ^3.18.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -78,6 +80,8 @@ flutter:
     - assets/data/
     - assets/cards/
     - assets/images/
+    - assets/bin/
+    - assets/scripts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -104,3 +108,13 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+msix_config:
+  display_name: USE Advance Picture Dictionary
+  publisher_display_name: Badruddin Siddiqui
+  identity_name: com.useadvance.useadvancepicturedictionaryapp
+  msix_version: 1.0.0.0
+  logo_path: assets/images/app_icon.png
+  protocol_activations:
+    - useadvancepicdict
+  architecture: x64

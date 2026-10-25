@@ -1,8 +1,8 @@
-﻿#define MyAppName USE Advance Picture Dictionary
-#define MyAppVersion 1.0.0
-#define MyAppPublisher Badruddin Siddiqui
-#define MyAppExeName use_advance_picture_dictionary_app.exe
-#define MySourceDir build\\windows\\x64\\runner\\Release
+#define MyAppName "USE Advance Picture Dictionary"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "Badruddin Siddiqui"
+#define MyAppExeName "use_advance_picture_dictionary_app.exe"
+#define MySourceDir "build\windows\x64\runner\Release"
 
 [Setup]
 AppId={{9C52E3A1-6D87-4E2F-A5C9-123456789ABC}
@@ -35,10 +35,10 @@ Name: {autodesktop}\{#MyAppName}; Filename: {app}\{#MyAppExeName}; Tasks: deskto
 
 [Registry]
 ; Register custom protocol: useadvancepicdict://
-Root: HKCR; Subkey: useadvancepicdict; ValueType: string; ValueName: "; ValueData: URL:USE Advance Picture Dictionary Protocol; Flags: uninsdeletekey
-Root: HKCR; Subkey: useadvancepicdict; ValueType: string; ValueName: URL Protocol; ValueData: 
-Root: HKCR; Subkey: useadvancepicdict\DefaultIcon; ValueType: string; ValueName: ; ValueData: {app}\{#MyAppExeName},0
-Root: HKCR; Subkey: useadvancepicdict\shell\open\command; ValueType: string; ValueName: ; ValueData: "{app}\{#MyAppExeName} %1"
+Root: HKCR; Subkey: "useadvancepicdict"; ValueType: string; ValueName: ""; ValueData: "URL:USE Advance Picture Dictionary Protocol"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "useadvancepicdict"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCR; Subkey: "useadvancepicdict\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCR; Subkey: "useadvancepicdict\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Run]
 Filename: {app}\{#MyAppExeName}; Description: {cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}; Flags: nowait postinstall skipifsilent

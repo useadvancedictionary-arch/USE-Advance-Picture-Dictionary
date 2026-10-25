@@ -10,6 +10,20 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'smart_auto_tagger.dart';
 import 'bundled_cards_data.dart';
 
+class PictureUpdateResult {
+  final int totalProcessed;
+  final int updatedExisting;
+  final int newlyCreated;
+  final List<String> updatedWords;
+
+  const PictureUpdateResult({
+    required this.totalProcessed,
+    required this.updatedExisting,
+    required this.newlyCreated,
+    required this.updatedWords,
+  });
+}
+
 class PictureDatabaseService {
   static final PictureDatabaseService instance = PictureDatabaseService._init();
   static Database? _database;
@@ -33,15 +47,23 @@ class PictureDatabaseService {
 
     final db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await _createDB(db, version);
         await _seedFullDictionary(db);
+        await cleanupDuplicates(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        await _seedFullDictionary(db);
+        await cleanupDuplicates(db);
       },
     );
+
+    // Thoroughly clean up any duplicate words/variants from database on startup
+    try {
+      await cleanupDuplicates(db);
+    } catch (e) {
+      debugPrint('Cleanup duplicates error: $e');
+    }
 
     // Ensure all 15,916 dictionary entries are populated
     try {
@@ -51,6 +73,7 @@ class PictureDatabaseService {
           : 0;
       if (count < 1000) {
         await _seedFullDictionary(db);
+        await cleanupDuplicates(db);
       }
     } catch (e) {
       debugPrint('DB entry check error: $e');
@@ -104,10 +127,104 @@ class PictureDatabaseService {
     return await db.delete('picture_entries', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Canonical word normalization for exact duplicate elimination
+  static String normalizeWord(String word) {
+    return word
+        .replaceAll('’', "'")
+        .replaceAll('‘', "'")
+        .replaceAll('`', "'")
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('\u00A0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll('friend in need is a friend in indeed', 'friend in need is a friend indeed')
+        .trim()
+        .toLowerCase();
+  }
+
+  /// In-memory deduplication filter guaranteeing zero duplicate cards in any view
+  static List<PictureWordEntry> deduplicateEntries(List<PictureWordEntry> entries) {
+    final seen = <String>{};
+    final unique = <PictureWordEntry>[];
+    for (final entry in entries) {
+      final norm = normalizeWord(entry.word);
+      if (seen.add(norm)) {
+        unique.add(entry);
+      }
+    }
+    return unique;
+  }
+
+  /// Purges duplicate rows from the SQLite database table permanently
+  Future<int> cleanupDuplicates(Database db) async {
+    try {
+      final rows = await db.rawQuery(
+        'SELECT id, word, part_of_speech, english_meaning, image_url, category FROM picture_entries ORDER BY id ASC'
+      );
+      if (rows.isEmpty) return 0;
+
+      final Map<String, Map<String, dynamic>> canonicalMap = {};
+      final List<int> idsToDelete = [];
+
+      for (final row in rows) {
+        final id = (row['id'] as num).toInt();
+        final word = (row['word'] ?? '').toString();
+        final norm = normalizeWord(word);
+
+        if (!canonicalMap.containsKey(norm)) {
+          canonicalMap[norm] = row;
+        } else {
+          final existing = canonicalMap[norm]!;
+          final existingId = (existing['id'] as num).toInt();
+          final existingImg = (existing['image_url'] ?? '').toString();
+          final currentImg = (row['image_url'] ?? '').toString();
+          final existingMeaning = (existing['english_meaning'] ?? '').toString();
+          final currentMeaning = (row['english_meaning'] ?? '').toString();
+
+          // Prefer the card that has a local/curated asset image
+          final existingHasGoodImg = existingImg.isNotEmpty && !existingImg.contains('pollinations');
+          final currentHasGoodImg = currentImg.isNotEmpty && !currentImg.contains('pollinations');
+
+          bool keepCurrent = false;
+          if (!existingHasGoodImg && currentHasGoodImg) {
+            keepCurrent = true;
+          } else if (existingHasGoodImg == currentHasGoodImg) {
+            if (currentMeaning.length > existingMeaning.length) {
+              keepCurrent = true;
+            }
+          }
+
+          if (keepCurrent) {
+            idsToDelete.add(existingId);
+            canonicalMap[norm] = row;
+          } else {
+            idsToDelete.add(id);
+          }
+        }
+      }
+
+      if (idsToDelete.isNotEmpty) {
+        debugPrint('Found ${idsToDelete.length} duplicate entries to purge from SQLite.');
+        const batchSize = 500;
+        for (int i = 0; i < idsToDelete.length; i += batchSize) {
+          final chunk = idsToDelete.skip(i).take(batchSize).toList();
+          final placeholders = List.filled(chunk.length, '?').join(',');
+          await db.delete('picture_entries', where: 'id IN ($placeholders)', whereArgs: chunk);
+        }
+        debugPrint('Successfully purged ${idsToDelete.length} duplicate entries.');
+      }
+      return idsToDelete.length;
+    } catch (e) {
+      debugPrint('Error cleaning up duplicates: $e');
+      return 0;
+    }
+  }
+
   Future<List<PictureWordEntry>> getAllEntries() async {
     final db = await database;
     final maps = await db.query('picture_entries', orderBy: 'word ASC');
-    return maps.map((m) => PictureWordEntry.fromMap(m)).toList();
+    final list = maps.map((m) => PictureWordEntry.fromMap(m)).toList();
+    return deduplicateEntries(list);
   }
 
   Future<List<PictureWordEntry>> searchEntries(String query) async {
@@ -115,20 +232,29 @@ class PictureDatabaseService {
     final trimmed = query.trim().toLowerCase();
     if (trimmed.isEmpty) return getAllEntries();
 
+    final straight = trimmed.replaceAll('’', "'").replaceAll('‘', "'");
+    final curly = trimmed.replaceAll("'", '’');
+
     final maps = await db.rawQuery(
       '''
       SELECT * FROM picture_entries
-      WHERE LOWER(word) LIKE ? OR LOWER(category) LIKE ? OR LOWER(english_meaning) LIKE ? OR LOWER(synonyms) LIKE ?
+      WHERE LOWER(word) LIKE ? OR LOWER(word) LIKE ? OR LOWER(word) LIKE ?
+         OR LOWER(category) LIKE ? OR LOWER(english_meaning) LIKE ? OR LOWER(synonyms) LIKE ?
       ORDER BY
         CASE
-          WHEN LOWER(word) = ? THEN 0
-          WHEN LOWER(word) LIKE ? || '%' THEN 1
+          WHEN LOWER(word) = ? OR LOWER(word) = ? THEN 0
+          WHEN LOWER(word) LIKE ? || '%' OR LOWER(word) LIKE ? || '%' THEN 1
           ELSE 2
         END,
         word ASC
       LIMIT 100
       ''',
-      ['%$trimmed%', '%$trimmed%', '%$trimmed%', '%$trimmed%', trimmed, trimmed],
+      [
+        '%$trimmed%', '%$straight%', '%$curly%',
+        '%$trimmed%', '%$trimmed%', '%$trimmed%',
+        trimmed, straight,
+        trimmed, straight
+      ],
     );
     final results = maps.map((m) => PictureWordEntry.fromMap(m)).toList();
 
@@ -158,7 +284,7 @@ class PictureDatabaseService {
       }
     }
 
-    return results;
+    return deduplicateEntries(results);
   }
 
   Future<List<PictureWordEntry>> getEntriesByCategory(String category) async {
@@ -169,15 +295,19 @@ class PictureDatabaseService {
       whereArgs: [category],
       orderBy: 'word ASC',
     );
-    return maps.map((m) => PictureWordEntry.fromMap(m)).toList();
+    final list = maps.map((m) => PictureWordEntry.fromMap(m)).toList();
+    return deduplicateEntries(list);
   }
 
   Future<PictureWordEntry?> getEntryByWord(String word) async {
     final db = await database;
+    final trimmed = word.trim().toLowerCase();
+    final straight = trimmed.replaceAll('’', "'").replaceAll('‘', "'");
+    final curly = trimmed.replaceAll("'", '’');
     final maps = await db.query(
       'picture_entries',
-      where: 'LOWER(word) = ?',
-      whereArgs: [word.trim().toLowerCase()],
+      where: 'LOWER(word) = ? OR LOWER(word) = ? OR LOWER(word) = ?',
+      whereArgs: [trimmed, straight, curly],
       limit: 1,
     );
     if (maps.isNotEmpty) {
@@ -185,6 +315,130 @@ class PictureDatabaseService {
     }
     return null;
   }
+
+  /// Updates ONLY the picture (image_url and thumbnail_url) for a specific word,
+  /// guaranteeing that ALL other data (part_of_speech, english_meaning, synonyms,
+  /// antonyms, category, example_sentence) remains 100% UNCHANGED.
+  /// Also guarantees NO duplicate row is created.
+  Future<bool> updateWordPicture({
+    required String word,
+    required String imagePath,
+    String? customMeaning,
+  }) async {
+    final trimmed = word.trim();
+    if (trimmed.isEmpty) return false;
+
+    final db = await database;
+    final existing = await getEntryByWord(trimmed);
+    if (existing != null) {
+      final straight = trimmed.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+      final curly = trimmed.toLowerCase().replaceAll("'", '’');
+      await db.update(
+        'picture_entries',
+        {
+          'image_url': imagePath,
+          'thumbnail_url': imagePath,
+        },
+        where: 'LOWER(word) = ? OR LOWER(word) = ? OR LOWER(word) = ?',
+        whereArgs: [trimmed.toLowerCase(), straight, curly],
+      );
+      return true;
+    }
+
+    // If not in SQLite yet, check dictionary.json to pull official meanings/POS
+    final dictEntry = await getDictionaryWord(trimmed);
+    String pos = 'Noun';
+    String meaning = '';
+    List<String> synonyms = [];
+    List<String> antonyms = [];
+    String? example;
+
+    if (dictEntry != null) {
+      pos = dictEntry['partOfSpeech']?.toString() ?? 'Noun';
+      meaning = dictEntry['englishMeaning']?.toString() ?? '';
+      synonyms = _parseWordList(dictEntry['synonyms']?.toString() ?? '');
+      antonyms = _parseWordList(dictEntry['antonyms']?.toString() ?? '');
+      example = dictEntry['examples']?.toString();
+    } else if (customMeaning != null && customMeaning.trim().isNotEmpty) {
+      meaning = customMeaning.trim();
+      pos = 'Phrase';
+    }
+
+    final category = SmartAutoTagger.autoClassify(
+      word: trimmed,
+      meaning: meaning,
+      example: example,
+      pos: pos,
+    );
+
+    final entry = PictureWordEntry(
+      word: dictEntry?['word']?.toString() ?? trimmed,
+      partOfSpeech: pos,
+      englishMeaning: meaning,
+      synonyms: synonyms,
+      antonyms: antonyms,
+      imageUrl: imagePath,
+      thumbnailUrl: imagePath,
+      category: category,
+      exampleSentence: example,
+    );
+
+    await insertEntry(entry);
+    return true;
+  }
+
+  /// Batch update pictures for multiple words atomically, preserving all existing word definitions
+  /// and ensuring zero duplicate entries.
+  Future<PictureUpdateResult> batchUpdateWordPictures(
+    Map<String, String> wordToImagePathMap, {
+    Map<String, String>? wordToMeaningMap,
+  }) async {
+    int updatedExisting = 0;
+    int newlyCreated = 0;
+    final List<String> updatedWords = [];
+
+    final db = await database;
+
+    for (final entry in wordToImagePathMap.entries) {
+      final word = entry.key.trim();
+      final imagePath = entry.value.trim();
+      if (word.isEmpty || imagePath.isEmpty) continue;
+
+      final existing = await getEntryByWord(word);
+      if (existing != null) {
+        // Surgical update: ONLY image_url and thumbnail_url
+        await db.update(
+          'picture_entries',
+          {
+            'image_url': imagePath,
+            'thumbnail_url': imagePath,
+          },
+          where: 'LOWER(word) = ?',
+          whereArgs: [word.toLowerCase()],
+        );
+        updatedExisting++;
+        updatedWords.add(existing.word);
+      } else {
+        // Create new entry with dictionary metadata or detected meaning
+        final customM = wordToMeaningMap?[word];
+        await updateWordPicture(
+          word: word,
+          imagePath: imagePath,
+          customMeaning: customM,
+        );
+        newlyCreated++;
+        updatedWords.add(word);
+      }
+    }
+
+    return PictureUpdateResult(
+      totalProcessed: wordToImagePathMap.length,
+      updatedExisting: updatedExisting,
+      newlyCreated: newlyCreated,
+      updatedWords: updatedWords,
+    );
+  }
+
 
   
   static Map<String, Map<String, dynamic>>? _dictionaryMap;
@@ -543,6 +797,7 @@ class PictureDatabaseService {
     }
 
     await batch.commit(noResult: true);
+    await cleanupDuplicates(db);
     return importedCount;
   }
 
@@ -568,7 +823,7 @@ class PictureDatabaseService {
       final starterEntries = _getInitialStarterEntries();
       final starterWords = <String>{};
       for (final entry in starterEntries) {
-        starterWords.add(entry.word.trim().toLowerCase());
+        starterWords.add(normalizeWord(entry.word));
         await db.insert(
           'picture_entries',
           entry.toMap(),
@@ -589,8 +844,9 @@ class PictureDatabaseService {
           final item = list[j] as Map<String, dynamic>;
           final word = (item['word'] ?? '').toString().trim();
           if (word.isEmpty) continue;
-          final lower = word.toLowerCase();
-          if (starterWords.contains(lower)) continue;
+          final norm = normalizeWord(word);
+          if (starterWords.contains(norm)) continue;
+          starterWords.add(norm);
 
           final rawPos = (item['partOfSpeech'] ?? 'Noun').toString().trim();
           final meaning = (item['englishMeaning'] ?? '').toString().trim();
@@ -606,7 +862,10 @@ class PictureDatabaseService {
           );
 
           String img = '';
-          if (BundledCardsData.wordToAssetMap.containsKey(lower)) {
+          final lower = word.toLowerCase();
+          if (BundledCardsData.wordToAssetMap.containsKey(norm)) {
+            img = BundledCardsData.wordToAssetMap[norm]!;
+          } else if (BundledCardsData.wordToAssetMap.containsKey(lower)) {
             img = BundledCardsData.wordToAssetMap[lower]!;
           } else {
             img = SmartAutoTagger.autoResolveImage(
@@ -637,6 +896,7 @@ class PictureDatabaseService {
         }
         await batch.commit(noResult: true);
       }
+      await cleanupDuplicates(db);
       debugPrint('Successfully seeded full dictionary (${list.length} entries) into SQLite');
     } catch (e) {
       debugPrint('Error in _seedFullDictionary: $e');
