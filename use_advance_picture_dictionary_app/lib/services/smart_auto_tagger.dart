@@ -207,12 +207,14 @@ class SmartAutoTagger {
     required String word,
     required String meaning,
     String? pos,
+    int? seed,
   }) {
     final firstSentence = meaning.split(RegExp(r'\. |\.\n')).first.trim();
     final cleanMeaning = firstSentence.replaceAll(RegExp(r'[\r\n"]'), ' ');
     final prompt = 'Educational dictionary flashcard visual depicting "$cleanMeaning", representing vocabulary word "$word" ($pos), realistic photographic style, high clarity, didactic storytelling composition';
     final encoded = Uri.encodeComponent(prompt);
-    return 'https://image.pollinations.ai/prompt/$encoded?width=800&height=600&nologo=true';
+    final seedParam = seed != null ? '&seed=$seed' : '';
+    return 'https://image.pollinations.ai/prompt/$encoded?width=800&height=600&nologo=true$seedParam';
   }
 
   /// Automatically resolves a high-definition image URL or bundled asset for any word
@@ -238,9 +240,7 @@ class SmartAutoTagger {
       return clean;
     }
 
-    // 3. AI generated visual matching meaning if meaning is available
     if (meaning != null && meaning.trim().isNotEmpty) {
-      return buildAiFlashcardUrl(word: word, meaning: meaning, pos: pos);
     }
 
     // 4. Curated image bank
@@ -274,9 +274,7 @@ class SmartAutoTagger {
       return clean;
     }
 
-    // 2. High-precision didactic visual generated directly from meaning
     if (meaning != null && meaning.trim().isNotEmpty) {
-      return buildAiFlashcardUrl(word: word, meaning: meaning, pos: pos);
     }
 
     if (_curatedImageBank.containsKey(lower)) {
@@ -316,4 +314,6 @@ class SmartAutoTagger {
     } catch (_) {}
     return null;
   }
+
+
 }

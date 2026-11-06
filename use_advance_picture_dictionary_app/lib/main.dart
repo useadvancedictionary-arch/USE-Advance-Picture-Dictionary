@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -54,9 +54,11 @@ class UseAdvancePictureDictionaryApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       theme: ThemeData(
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF1F6FB),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF2E3192),
           brightness: Brightness.light,
+          surface: const Color(0xFFFAFDFE),
         ),
         cardTheme: CardThemeData(
           elevation: 1,
@@ -86,3 +88,4 @@ class UseAdvancePictureDictionaryApp extends StatelessWidget {
     );
   }
 }
+

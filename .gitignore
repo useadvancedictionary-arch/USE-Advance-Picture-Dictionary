@@ -46,3 +46,6 @@ Thumbs.db
 **/ocr_tool/obj/
 use_advance_picture_dictionary_app/bin/
 use_advance_picture_dictionary_app/windows/runner/ocr_tool.exe
+
+# Exclude long-filename branding tiles
+Brandings/Pics Tiles Done/

@@ -5,9 +5,11 @@ import '../services/picture_database_service.dart';
 import '../services/interlink_service.dart';
 import 'picture_word_detail_screen.dart';
 import 'picture_quiz_screen.dart';
-import 'bulk_import_screen.dart';
-import 'grid_picture_import_screen.dart';
-import 'about_info_accordion_screen.dart';
+import 'settings_screen.dart';
+import '../services/favorites_history_service.dart';
+import '../services/firestore_sync_service.dart';
+import 'favorites_screen.dart';
+import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +30,24 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadData();
     _setupDeepLinks();
+    FavoritesHistoryService.instance.init();
+    _syncWithCloudInBackground();
+  }
+
+  void _syncWithCloudInBackground() {
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        final result = await FirestoreSyncService.instance.syncPictureEntriesToLocal();
+        if (result.success && (result.addedOrUpdated > 0 || result.deleted > 0) && mounted) {
+          debugPrint('Silent cloud sync applied: ${result.message}');
+          if (_searchController.text.trim().isEmpty) {
+            _loadData();
+          }
+        }
+      } catch (e) {
+        debugPrint('Silent background sync check: $e');
+      }
+    });
   }
 
   void _setupDeepLinks() {
@@ -143,8 +163,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Row(
           children: [
             ClipRRect(
@@ -165,16 +189,44 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'USE Advance Picture Dictionary',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                overflow: TextOverflow.ellipsis,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = MediaQuery.of(context).size.width < 450;
+                  return Text(
+                    isNarrow ? 'USE Picture Dict' : 'USE Advance Picture Dictionary',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: isNarrow ? 15 : 18,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  );
+                },
               ),
             ),
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Favourites',
+            icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Search & View History',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Visual Vocabulary Quiz',
             icon: const Icon(Icons.quiz_outlined),
@@ -186,36 +238,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
-            tooltip: 'Split & Assign Grid Pictures',
-            icon: const Icon(Icons.grid_on_rounded),
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const GridPictureImportScreen()),
-              );
-              if (result == true) {
-                _searchController.clear();
-                _selectedCategory = 'All';
-                await _loadData();
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Import Excel / CSV Vocabulary',
-            icon: const Icon(Icons.file_upload_outlined),
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BulkImportScreen()),
-              );
-              if (result == true) {
-                _searchController.clear();
-                _selectedCategory = 'All';
-                await _loadData();
-              }
-            },
-          ),
-          IconButton(
             tooltip: 'Open Companion App (USE Advance Dictionary)',
             icon: const Icon(Icons.menu_book_rounded),
             onPressed: () {
@@ -223,21 +245,46 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
-            tooltip: 'About, Help & Policies',
-            icon: const Icon(Icons.info_outline_rounded),
-            onPressed: () {
-              Navigator.push(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: () async {
+              final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AboutInfoAccordionScreen()),
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
+              if (result == true) {
+                _searchController.clear();
+                _selectedCategory = 'All';
+                await _loadData();
+              }
             },
           ),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1300),
-          child: Column(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? const [
+                    Color(0xFF0F172A),
+                    Color(0xFF0B192C),
+                    Color(0xFF091424),
+                  ]
+                : const [
+                    Color(0xFFF0F7FF),
+                    Color(0xFFE8F4FD),
+                    Color(0xFFF3F8FC),
+                  ],
+          ),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1300),
+            child: Column(
             children: [
               // 1. Search Box
               Padding(
@@ -269,27 +316,80 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // 2. Category Filter Chips
+              // 2. Category Filter Chips - Modern Transparent Outline Style
               SizedBox(
-                height: 48,
+                height: 44,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                   itemCount: _categories.length,
                   separatorBuilder: (context, index) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final cat = _categories[index];
                     final isSelected = cat == _selectedCategory;
-                    return ChoiceChip(
-                      label: Text(cat),
-                      selected: isSelected,
-                      selectedColor: theme.colorScheme.primary,
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : theme.textTheme.bodyMedium?.color,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 13,
+
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(22),
+                        onTap: () => _onCategorySelected(cat),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? (isDark ? const Color(0xFF00E5FF).withValues(alpha: 0.22) : const Color(0xFF2E3192).withValues(alpha: 0.12))
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.04)
+                                    : Colors.white.withValues(alpha: 0.45)),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: isSelected
+                                  ? (isDark ? const Color(0xFF00E5FF) : const Color(0xFF2E3192))
+                                  : (isDark
+                                      ? Colors.white.withValues(alpha: 0.28)
+                                      : const Color(0xFF00C6FF).withValues(alpha: 0.38)),
+                              width: isSelected ? 1.6 : 1.1,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF00C6FF).withValues(alpha: 0.22),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isSelected) ...[
+                                Icon(
+                                  Icons.check_rounded,
+                                  size: 15,
+                                  color: isDark ? const Color(0xFF00E5FF) : const Color(0xFF2E3192),
+                                ),
+                                const SizedBox(width: 5),
+                              ],
+                              Text(
+                                cat,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? (isDark ? const Color(0xFF00E5FF) : const Color(0xFF2E3192))
+                                      : (isDark
+                                          ? Colors.white.withValues(alpha: 0.85)
+                                          : const Color(0xFF1E293B)),
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  fontSize: 13,
+                                  letterSpacing: 0.15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      onSelected: (_) => _onCategorySelected(cat),
                     );
                   },
                 ),
@@ -390,7 +490,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               }
 
                               return GridView.builder(
-                                padding: const EdgeInsets.all(16),
+                                padding: EdgeInsets.fromLTRB(
+                                  16,
+                                  16,
+                                  16,
+                                  16 + MediaQuery.of(context).padding.bottom,
+                                ),
                                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: crossAxisCount,
                                   crossAxisSpacing: 14,
@@ -400,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 itemCount: _entries.length,
                                 itemBuilder: (context, index) {
                                   final entry = _entries[index];
-                                  return _buildWordCard(context, entry);
+                                  return _buildWordCard(context, entry, index);
                                 },
                               );
                             },
@@ -410,10 +515,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
-  Widget _buildWordCard(BuildContext context, PictureWordEntry entry) {
+  Widget _buildWordCard(BuildContext context, PictureWordEntry entry, [int? index]) {
     final theme = Theme.of(context);
     final posInitial = entry.partOfSpeech.isNotEmpty
         ? entry.partOfSpeech.substring(0, 1).toUpperCase()
@@ -429,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => PictureWordDetailScreen(entry: entry),
+              builder: (_) => PictureWordDetailScreen(entry: entry, entriesList: _entries, initialIndex: index),
             ),
           );
         },
@@ -438,16 +544,50 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Expanded(
               flex: 5,
-              child: Container(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
-                child: Hero(
-                  tag: 'word_img_${entry.word}',
-                  child: PictureCardImage(
-                    imageUrl: entry.thumbnailUrl ?? entry.imageUrl,
-                    word: entry.word,
-                    fit: BoxFit.contain,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                    child: Hero(
+                      tag: 'word_img_${entry.word}',
+                      child: PictureCardImage(
+                        imageUrl: entry.thumbnailUrl ?? entry.imageUrl,
+                        word: entry.word,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
-                ),
+                  // Favourite Heart Toggle on top-right of image card
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: AnimatedBuilder(
+                      animation: FavoritesHistoryService.instance,
+                      builder: (context, _) {
+                        final isFav = FavoritesHistoryService.instance.isFavorite(entry.word);
+                        return Material(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () {
+                              FavoritesHistoryService.instance.toggleFavorite(entry.word);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(
+                                isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                size: 18,
+                                color: isFav ? Colors.redAccent : Colors.white,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -507,3 +647,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
+
+
+

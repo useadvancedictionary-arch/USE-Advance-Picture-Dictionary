@@ -70,7 +70,9 @@ class _AboutInfoAccordionScreenState extends State<AboutInfoAccordionScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Center(
           child: ConstrainedBox(
@@ -144,11 +146,12 @@ class _AboutInfoAccordionScreenState extends State<AboutInfoAccordionScreen> {
 
                 // 6. Footer Signature
                 _buildFooterSignature(theme),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
               ],
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -234,9 +237,10 @@ class _AboutInfoAccordionScreenState extends State<AboutInfoAccordionScreen> {
           ),
           const SizedBox(height: 6),
 
-          // Subtitle Badge matching logo's cyan ribbon
+          // Subtitle Badge matching logo's cyan ribbon - responsive and centered
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xFF00E5FF).withValues(alpha: 0.22),
               borderRadius: BorderRadius.circular(20),
@@ -244,16 +248,23 @@ class _AboutInfoAccordionScreenState extends State<AboutInfoAccordionScreen> {
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.photo_library_outlined, size: 14, color: Color(0xFF00E5FF)),
                 SizedBox(width: 6),
-                Text(
-                  'Visual Flashcards • English • Sindhi • Urdu • 15,900+ Words',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.2,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Visual Flashcards • English • Sindhi • Urdu • 15,900+ Words',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -704,3 +715,4 @@ class _AboutInfoAccordionScreenState extends State<AboutInfoAccordionScreen> {
     );
   }
 }
+

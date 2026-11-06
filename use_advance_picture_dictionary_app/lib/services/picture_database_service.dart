@@ -47,13 +47,17 @@ class PictureDatabaseService {
 
     final db = await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await _createDB(db, version);
         await _seedFullDictionary(db);
         await cleanupDuplicates(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 6) {
+          // Re-seed updated bundled offline card mappings into SQLite
+          await _seedFullDictionary(db);
+        }
         await cleanupDuplicates(db);
       },
     );
@@ -63,6 +67,13 @@ class PictureDatabaseService {
       await cleanupDuplicates(db);
     } catch (e) {
       debugPrint('Cleanup duplicates error: $e');
+    }
+
+    // Ensure auxiliary tables for favorites and history
+    try {
+      await _ensureAuxiliaryTables(db);
+    } catch (e) {
+      debugPrint('Auxiliary tables init error: $e');
     }
 
     // Ensure all 15,916 dictionary entries are populated
@@ -125,6 +136,39 @@ class PictureDatabaseService {
   Future<int> deleteEntry(int id) async {
     final db = await database;
     return await db.delete('picture_entries', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteEntryByWord(String word) async {
+    final db = await database;
+    final trimmed = word.trim().toLowerCase();
+    final straight = trimmed.replaceAll('‘', "'").replaceAll('’', "'");
+    final curly = trimmed.replaceAll("'", '’');
+    return await db.delete(
+      'picture_entries',
+      where: 'LOWER(word) = ? OR LOWER(word) = ? OR LOWER(word) = ?',
+      whereArgs: [trimmed, straight, curly],
+    );
+  }
+
+  Future<int> updateEntry(PictureWordEntry entry) async {
+    if (entry.id == null) return 0;
+    final db = await database;
+    return await db.update(
+      'picture_entries',
+      entry.toMap(),
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
+  }
+
+  Future<int> insertOrUpdateEntry(PictureWordEntry entry) async {
+    final existing = await getEntryByWord(entry.word);
+    if (existing != null && existing.id != null) {
+      final updated = entry.copyWith(id: existing.id);
+      return await updateEntry(updated);
+    } else {
+      return await insertEntry(entry);
+    }
   }
 
   /// Canonical word normalization for exact duplicate elimination
@@ -537,6 +581,44 @@ class PictureDatabaseService {
     return entry;
   }
 
+  Future<PictureWordEntry?> getPreviousEntry(String currentWord) async {
+    try {
+      final db = await database;
+      final clean = currentWord.trim();
+      final res = await db.rawQuery('''
+        SELECT * FROM picture_entries 
+        WHERE LOWER(word) < LOWER(?) 
+        ORDER BY LOWER(word) DESC 
+        LIMIT 1
+      ''', [clean]);
+      if (res.isNotEmpty) {
+        return PictureWordEntry.fromMap(res.first);
+      }
+    } catch (e) {
+      debugPrint('getPreviousEntry error: $e');
+    }
+    return null;
+  }
+
+  Future<PictureWordEntry?> getNextEntry(String currentWord) async {
+    try {
+      final db = await database;
+      final clean = currentWord.trim();
+      final res = await db.rawQuery('''
+        SELECT * FROM picture_entries 
+        WHERE LOWER(word) > LOWER(?) 
+        ORDER BY LOWER(word) ASC 
+        LIMIT 1
+      ''', [clean]);
+      if (res.isNotEmpty) {
+        return PictureWordEntry.fromMap(res.first);
+      }
+    } catch (e) {
+      debugPrint('getNextEntry error: $e');
+    }
+    return null;
+  }
+
   Future<List<String>> getAllCategories() async {
     final db = await database;
     final result = await db.rawQuery('SELECT DISTINCT category FROM picture_entries ORDER BY category ASC');
@@ -902,4 +984,146 @@ class PictureDatabaseService {
       debugPrint('Error in _seedFullDictionary: $e');
     }
   }
+
+  Future<void> _ensureAuxiliaryTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_fav_word ON favorites(word)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT NOT NULL UNIQUE,
+        viewed_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_hist_word ON history(word)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_hist_time ON history(viewed_at)');
+  }
+
+  // ── Favorites Methods ──
+  Future<void> addFavorite(String word) async {
+    final clean = word.trim();
+    if (clean.isEmpty) return;
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.rawInsert('''
+      INSERT OR REPLACE INTO favorites (word, created_at)
+      VALUES (?, ?)
+    ''', [clean, now]);
+  }
+
+  Future<void> removeFavorite(String word) async {
+    final clean = word.trim();
+    if (clean.isEmpty) return;
+    final db = await database;
+    await db.delete(
+      'favorites',
+      where: 'LOWER(word) = ?',
+      whereArgs: [clean.toLowerCase()],
+    );
+  }
+
+  Future<void> clearAllFavorites() async {
+    final db = await database;
+    await db.delete('favorites');
+  }
+
+  Future<Set<String>> getAllFavoriteWords() async {
+    final db = await database;
+    final res = await db.query('favorites', columns: ['word']);
+    return res.map((r) => r['word'].toString()).toSet();
+  }
+
+  Future<List<PictureWordEntry>> getFavoriteEntries() async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT p.*, f.word AS fav_word
+      FROM favorites f
+      LEFT JOIN picture_entries p ON LOWER(p.word) = LOWER(f.word)
+      ORDER BY f.created_at DESC
+    ''');
+
+    final List<PictureWordEntry> list = [];
+    for (final row in res) {
+      if (row['id'] != null) {
+        list.add(PictureWordEntry.fromMap(row));
+      } else {
+        final fallback = row['fav_word']?.toString() ?? '';
+        list.add(PictureWordEntry(
+          word: fallback,
+          partOfSpeech: 'Word',
+          englishMeaning: 'Favorited word',
+          synonyms: const [],
+          antonyms: const [],
+          imageUrl: 'assets/images/app_logo.png',
+          category: 'Favorites',
+        ));
+      }
+    }
+    return list;
+  }
+
+  // ── History Methods ──
+  Future<void> addToHistory(String word) async {
+    final clean = word.trim();
+    if (clean.isEmpty) return;
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.rawInsert('''
+      INSERT OR REPLACE INTO history (word, viewed_at)
+      VALUES (?, ?)
+    ''', [clean, now]);
+  }
+
+  Future<void> removeFromHistory(String word) async {
+    final clean = word.trim();
+    if (clean.isEmpty) return;
+    final db = await database;
+    await db.delete(
+      'history',
+      where: 'LOWER(word) = ?',
+      whereArgs: [clean.toLowerCase()],
+    );
+  }
+
+  Future<void> clearAllHistory() async {
+    final db = await database;
+    await db.delete('history');
+  }
+
+  Future<List<PictureWordEntry>> getHistoryEntries() async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT p.*, h.word AS hist_word
+      FROM history h
+      LEFT JOIN picture_entries p ON LOWER(p.word) = LOWER(h.word)
+      ORDER BY h.viewed_at DESC
+    ''');
+
+    final List<PictureWordEntry> list = [];
+    for (final row in res) {
+      if (row['id'] != null) {
+        list.add(PictureWordEntry.fromMap(row));
+      } else {
+        final fallback = row['hist_word']?.toString() ?? '';
+        list.add(PictureWordEntry(
+          word: fallback,
+          partOfSpeech: 'Word',
+          englishMeaning: 'Viewed word',
+          synonyms: const [],
+          antonyms: const [],
+          imageUrl: 'assets/images/app_logo.png',
+          category: 'History',
+        ));
+      }
+    }
+    return list;
+  }
 }
+

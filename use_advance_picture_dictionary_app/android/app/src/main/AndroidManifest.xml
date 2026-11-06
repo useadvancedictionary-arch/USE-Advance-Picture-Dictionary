@@ -42,7 +42,8 @@
     </application>
 
     <queries>
-        <!-- Allows checking if USE Advance Dictionary is installed -->
+        <!-- Allows checking and launching USE Advance Dictionary by package or scheme -->
+        <package android:name="com.useadvance.dictionary" />
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="useadvancedict"/>

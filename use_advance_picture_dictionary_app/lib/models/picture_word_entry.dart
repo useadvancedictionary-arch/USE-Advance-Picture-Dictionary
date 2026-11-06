@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 class PictureWordEntry {
   final int? id;
@@ -64,6 +64,32 @@ class PictureWordEntry {
       thumbnailUrl: map['thumbnail_url']?.toString(),
       category: map['category']?.toString() ?? 'General',
       exampleSentence: map['example_sentence']?.toString(),
+    );
+  }
+
+  PictureWordEntry copyWith({
+    int? id,
+    String? word,
+    String? partOfSpeech,
+    String? englishMeaning,
+    List<String>? synonyms,
+    List<String>? antonyms,
+    String? imageUrl,
+    String? thumbnailUrl,
+    String? category,
+    String? exampleSentence,
+  }) {
+    return PictureWordEntry(
+      id: id ?? this.id,
+      word: word ?? this.word,
+      partOfSpeech: partOfSpeech ?? this.partOfSpeech,
+      englishMeaning: englishMeaning ?? this.englishMeaning,
+      synonyms: synonyms ?? this.synonyms,
+      antonyms: antonyms ?? this.antonyms,
+      imageUrl: imageUrl ?? this.imageUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      category: category ?? this.category,
+      exampleSentence: exampleSentence ?? this.exampleSentence,
     );
   }
 }

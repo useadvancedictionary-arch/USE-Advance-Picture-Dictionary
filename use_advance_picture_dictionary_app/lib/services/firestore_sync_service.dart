@@ -1,11 +1,29 @@
-﻿import 'dart:convert';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/picture_word_entry.dart';
 import 'picture_database_service.dart';
+
+/// Result object for sync operations.
+class SyncResult {
+  final bool success;
+  final int addedOrUpdated;
+  final int deleted;
+  final String message;
+
+  const SyncResult({
+    required this.success,
+    this.addedOrUpdated = 0,
+    this.deleted = 0,
+    required this.message,
+  });
+}
 
 /// Firestore collection names (shared with USE Advance Dictionary project)
 const String kFirestoreDictionaryCollection = 'dictionary_entries';
@@ -15,21 +33,58 @@ const String kFirestoreAdminsCollection = 'sync_admins';
 
 /// Firestore sync service for USE Advance Picture Dictionary.
 /// Reads dictionary_entries and daily_sentences from the shared Firebase project
-/// (same Firestore DB as USE Advance Dictionary) and can also sync picture_entries.
+/// and syncs picture_entries bidirectionally across all users.
 class FirestoreSyncService {
   static final FirestoreSyncService instance = FirestoreSyncService._init();
   FirestoreSyncService._init();
 
   static bool get firebaseReady => Firebase.apps.isNotEmpty;
 
-  /// Ensure the user is signed in (anonymous is fine for reads).
+  /// Ensure the user is signed in (anonymous is fine for reads and writes under open rules).
   Future<bool> _ensureSignedIn() async {
     if (FirebaseAuth.instance.currentUser != null) return true;
     try {
       await FirebaseAuth.instance.signInAnonymously();
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('FirestoreSyncService auth error: $e');
       return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ─── Sync Metadata Persistence ──────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<File> _getMetaFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/.picture_dict_sync_meta.json');
+  }
+
+  Future<int?> getLastSyncTime() async {
+    try {
+      final file = await _getMetaFile();
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        return data['lastSyncMs'] as int?;
+      }
+    } catch (e) {
+      debugPrint('Error reading sync metadata: $e');
+    }
+    return null;
+  }
+
+  Future<void> _saveLastSyncTime(int timestampMs) async {
+    try {
+      final file = await _getMetaFile();
+      final data = {
+        'lastSyncMs': timestampMs,
+        'lastSyncDate': DateTime.fromMillisecondsSinceEpoch(timestampMs).toIso8601String(),
+      };
+      await file.writeAsString(jsonEncode(data), flush: true);
+    } catch (e) {
+      debugPrint('Error saving sync metadata: $e');
     }
   }
 
@@ -38,7 +93,6 @@ class FirestoreSyncService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// Pull all dictionary entries from Firestore (shared with USE Advance Dictionary).
-  /// Returns a list of maps with word data.
   Future<List<Map<String, dynamic>>> pullDictionaryEntries({
     int? sinceMs,
     int limit = 500,
@@ -143,16 +197,21 @@ class FirestoreSyncService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ─── Picture Entries (read/write for this app) ─────────────────────────
+  // ─── Picture Entries (read/write for all users) ────────────────────────
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Push a picture entry to Firestore.
+  /// Format document ID uniformly for words in Firestore.
+  static String documentIdForWord(String word) {
+    return word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+  }
+
+  /// Push a single picture entry to Firestore.
   Future<bool> pushPictureEntry(PictureWordEntry entry) async {
     if (!firebaseReady) return false;
     if (!(await _ensureSignedIn())) return false;
 
     try {
-      final docId = entry.word.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+      final docId = documentIdForWord(entry.word);
       await FirebaseFirestore.instance
           .collection(kFirestorePictureEntriesCollection)
           .doc(docId)
@@ -160,22 +219,77 @@ class FirestoreSyncService {
             _pictureEntryToFirestoreMap(entry),
             SetOptions(merge: true),
           );
+      debugPrint('FirestoreSyncService: Pushed "${entry.word}" to Firestore');
       return true;
     } on FirebaseException catch (e) {
+      debugPrint('FirestoreSyncService push error: $e');
       if (e.code == 'permission-denied') return false;
       rethrow;
+    } catch (e) {
+      debugPrint('FirestoreSyncService push error: $e');
+      return false;
     }
   }
 
+  /// Delete a picture entry in Firestore (marks deleted: true so all clients remove it).
+  Future<bool> deletePictureEntry(String word) async {
+    if (!firebaseReady) return false;
+    if (!(await _ensureSignedIn())) return false;
+
+    try {
+      final docId = documentIdForWord(word);
+      await FirebaseFirestore.instance
+          .collection(kFirestorePictureEntriesCollection)
+          .doc(docId)
+          .set({
+        'word': word,
+        'deleted': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('FirestoreSyncService: Marked "$word" as deleted in Firestore');
+      return true;
+    } catch (e) {
+      debugPrint('FirestoreSyncService delete error: $e');
+      return false;
+    }
+  }
+
+  /// Push a batch of picture entries in transactions of 400 items.
+  Future<int> pushBatchPictureEntries(List<PictureWordEntry> entries) async {
+    if (!firebaseReady || entries.isEmpty) return 0;
+    if (!(await _ensureSignedIn())) return 0;
+
+    int totalPushed = 0;
+    const chunkSize = 400;
+    for (int i = 0; i < entries.length; i += chunkSize) {
+      final chunk = entries.sublist(
+        i,
+        (i + chunkSize > entries.length) ? entries.length : i + chunkSize,
+      );
+      final batch = FirebaseFirestore.instance.batch();
+      for (final entry in chunk) {
+        final docId = documentIdForWord(entry.word);
+        final docRef = FirebaseFirestore.instance
+            .collection(kFirestorePictureEntriesCollection)
+            .doc(docId);
+        batch.set(docRef, _pictureEntryToFirestoreMap(entry), SetOptions(merge: true));
+      }
+      await batch.commit();
+      totalPushed += chunk.length;
+      debugPrint('FirestoreSyncService: Batch committed $totalPushed/${entries.length} entries');
+    }
+    return totalPushed;
+  }
+
   /// Pull picture entries from Firestore.
-  Future<List<PictureWordEntry>> pullPictureEntries({
+  Future<List<Map<String, dynamic>>> pullRawPictureDocuments({
     int? sinceMs,
     int limit = 500,
   }) async {
     if (!firebaseReady) return [];
     if (!(await _ensureSignedIn())) return [];
 
-    final results = <PictureWordEntry>[];
+    final results = <Map<String, dynamic>>[];
     Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
         .collection(kFirestorePictureEntriesCollection);
 
@@ -201,29 +315,73 @@ class FirestoreSyncService {
 
       for (final doc in snap.docs) {
         final data = doc.data();
-        if (data['deleted'] == true) continue;
-        results.add(_firestoreDataToPictureEntry(data));
+        results.add(data);
       }
     }
 
     return results;
   }
 
-  /// Sync picture entries: pull from Firestore and merge into local SQLite.
-  Future<int> syncPictureEntriesToLocal() async {
-    final entries = await pullPictureEntries();
-    if (entries.isEmpty) return 0;
-
-    final db = PictureDatabaseService.instance;
-    int count = 0;
-    for (final entry in entries) {
-      final existing = await db.getEntryByWord(entry.word);
-      if (existing == null) {
-        await db.insertEntry(entry);
-        count++;
-      }
+  /// Sync picture entries from Firestore into the local SQLite database.
+  /// Handles both additions/updates and deletions, propagating admin edits to all users.
+  Future<SyncResult> syncPictureEntriesToLocal({bool forceFullSync = false}) async {
+    if (!firebaseReady) {
+      return const SyncResult(success: false, message: 'Firebase is not initialized.');
     }
-    return count;
+    if (!(await _ensureSignedIn())) {
+      return const SyncResult(success: false, message: 'Could not connect to Firebase sync.');
+    }
+
+    try {
+      final lastSyncMs = forceFullSync ? null : await getLastSyncTime();
+      final startTimestamp = DateTime.now().millisecondsSinceEpoch;
+
+      final docs = await pullRawPictureDocuments(sinceMs: lastSyncMs);
+      if (docs.isEmpty) {
+        await _saveLastSyncTime(startTimestamp);
+        return const SyncResult(
+          success: true,
+          addedOrUpdated: 0,
+          deleted: 0,
+          message: 'Already up to date with cloud.',
+        );
+      }
+
+      final db = PictureDatabaseService.instance;
+      int addedOrUpdated = 0;
+      int deletedCount = 0;
+
+      for (final data in docs) {
+        final word = data['word']?.toString() ?? '';
+        if (word.trim().isEmpty) continue;
+
+        final isDeleted = data['deleted'] == true;
+        if (isDeleted) {
+          await db.deleteEntryByWord(word);
+          deletedCount++;
+        } else {
+          final entry = _firestoreDataToPictureEntry(data);
+          await db.insertOrUpdateEntry(entry);
+          addedOrUpdated++;
+        }
+      }
+
+      await _saveLastSyncTime(startTimestamp);
+      debugPrint('FirestoreSyncService: Sync finished (updated: $addedOrUpdated, deleted: $deletedCount)');
+
+      return SyncResult(
+        success: true,
+        addedOrUpdated: addedOrUpdated,
+        deleted: deletedCount,
+        message: 'Sync completed: $addedOrUpdated updated, $deletedCount deleted.',
+      );
+    } catch (e) {
+      debugPrint('FirestoreSyncService sync error: $e');
+      return SyncResult(
+        success: false,
+        message: 'Sync failed: $e',
+      );
+    }
   }
 
   Map<String, dynamic> _pictureEntryToFirestoreMap(PictureWordEntry entry) {

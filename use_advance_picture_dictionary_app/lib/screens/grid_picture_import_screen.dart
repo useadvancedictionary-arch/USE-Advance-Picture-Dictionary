@@ -1,3 +1,4 @@
+import '../services/admin_auth_service.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -6,6 +7,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import '../services/grid_image_splitter_service.dart';
 import '../services/picture_database_service.dart';
+import '../services/firestore_sync_service.dart';
+import '../models/picture_word_entry.dart';
+import '../services/cloud_image_service.dart';
 import '../services/windows_card_ocr_service.dart';
 import 'picture_word_detail_screen.dart';
 
@@ -68,6 +72,14 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!AdminAuthService.instance.isAdminUnlocked) {
+        final ok = await AdminAuthService.instance.ensureAdminUnlocked(context);
+        if (!ok && mounted) {
+          Navigator.pop(context);
+        }
+      }
+    });
     _applyPreset(0);
 
     if (widget.initialImagePath != null) {
@@ -462,6 +474,42 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
         wordToMeaningMap: wordToMeaningMap,
       );
 
+      // Sync imported entries to Cloud Storage and Firestore for all users
+      () async {
+        try {
+          final entriesToSync = <PictureWordEntry>[];
+          for (final word in wordToPathMap.keys) {
+            final entry = await PictureDatabaseService.instance.getEntryByWord(word);
+            if (entry != null) {
+              var syncedEntry = entry;
+              // If the image is a local Windows file, upload to Firebase Storage so Android gets it
+              final localFile = File(entry.imageUrl);
+              if (await localFile.exists()) {
+                final cloudUrl = await CloudImageService.instance.uploadLocalFile(
+                  localFile,
+                  word: word,
+                );
+                if (cloudUrl != null && cloudUrl.isNotEmpty) {
+                  syncedEntry = entry.copyWith(
+                    imageUrl: cloudUrl,
+                    thumbnailUrl: cloudUrl,
+                  );
+                  // Update local SQLite as well
+                  await PictureDatabaseService.instance.insertOrUpdateEntry(syncedEntry);
+                }
+              }
+              entriesToSync.add(syncedEntry);
+            }
+          }
+          if (entriesToSync.isNotEmpty) {
+            await FirestoreSyncService.instance.pushBatchPictureEntries(entriesToSync);
+            debugPrint('Batch import uploaded & synced ${entriesToSync.length} entries to Firestore');
+          }
+        } catch (e) {
+          debugPrint('Error syncing batch import to Firestore: $e');
+        }
+      }();
+
       if (mounted) {
         setState(() {
           _isSaving = false;
@@ -522,6 +570,31 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
               ],
             ),
             actions: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: const Text('Upload Another Picture'),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  // Reset state for a fresh upload without leaving the screen
+                  setState(() {
+                    _sourceImageBytes = null;
+                    _sourceFileName = null;
+                    _sourceFilePath = null;
+                    _decodedUiImage = null;
+                    _croppedCards = [];
+                    _wordsInputController.clear();
+                    _wordDbStatus.clear();
+                    _autoDetectedTitles.clear();
+                    _autoDetectedMeanings.clear();
+                    _statusMessage = null;
+                    _isSaving = false;
+                    _isProcessing = false;
+                  });
+                  // Open file picker for the next image
+                  _pickImageFile();
+                },
+              ),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -624,7 +697,7 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
         child: Stack(
           children: [
             SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1100),
@@ -1499,3 +1572,4 @@ class _GridCropOverlayPainter extends CustomPainter {
         oldDelegate.words != words;
   }
 }
+
