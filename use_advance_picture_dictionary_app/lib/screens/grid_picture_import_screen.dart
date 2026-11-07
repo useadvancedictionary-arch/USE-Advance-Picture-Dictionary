@@ -1,4 +1,5 @@
 import '../services/admin_auth_service.dart';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -148,12 +149,30 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
 
   Future<void> _loadFileFromPath(String path) async {
     try {
-      final file = File(path);
-      if (!await file.exists()) return;
-      final bytes = await file.readAsBytes();
-      final name = path.split(RegExp(r'[/\\]')).last;
-      _sourceFilePath = path;
-      await _loadFromBytes(bytes, name, filePath: path);
+      var cleanPath = path.trim();
+      if (cleanPath.startsWith('file://')) {
+        try {
+          cleanPath = Uri.parse(cleanPath).toFilePath();
+        } catch (_) {
+          cleanPath = cleanPath.replaceFirst('file://', '');
+        }
+      }
+      final file = File(cleanPath);
+      Uint8List? bytes;
+      if (await file.exists()) {
+        bytes = await file.readAsBytes();
+      }
+      if (bytes == null || bytes.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File not found or inaccessible: $cleanPath')),
+          );
+        }
+        return;
+      }
+      final name = cleanPath.split(RegExp(r'[/\\]')).last;
+      _sourceFilePath = cleanPath;
+      await _loadFromBytes(bytes, name, filePath: cleanPath);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -171,6 +190,26 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
       _sourceFilePath = filePath;
       _autoDetectedTitles.clear();
       _autoDetectedMeanings.clear();
+
+      // If the filename contains multiple comma-separated words, auto-extract them as an immediate high-accuracy source
+      if (name.contains(',')) {
+        final cleanName = name.replaceAll(RegExp(r'\.(png|jpg|jpeg|webp)$', caseSensitive: false), '');
+        final nameWords = cleanName
+            .split(',')
+            .map((w) => w.trim())
+            .where((w) => w.isNotEmpty)
+            .toList();
+        if (nameWords.length >= 2) {
+          _wordsInputController.text = nameWords.join(', ');
+          if (nameWords.length == 10 && (_rows * _columns != 10)) {
+            _rows = 2;
+            _columns = 5;
+          } else if (nameWords.length == 15 && (_rows * _columns != 15)) {
+            _rows = 3;
+            _columns = 5;
+          }
+        }
+      }
 
       setState(() {
         _sourceImageBytes = bytes;
@@ -196,13 +235,17 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
     if (_sourceImageBytes == null) return;
 
     String? tempPathToClean;
-    String pathToScan = _sourceFilePath ?? '';
+    String pathToScan = '';
 
-    if (pathToScan.isEmpty) {
-      final tempFile = File('${Directory.systemTemp.path}/ocr_temp_${DateTime.now().millisecondsSinceEpoch}.png');
+    // Always create a clean, short temporary file in temp directory if path is missing, long, or has commas
+    // to strictly prevent Windows/WinRT PathTooLongException
+    if (_sourceFilePath == null || _sourceFilePath!.length > 180 || _sourceFilePath!.contains(',')) {
+      final tempFile = File('${Directory.systemTemp.path}/ocr_grid_${DateTime.now().millisecondsSinceEpoch}.png');
       await tempFile.writeAsBytes(_sourceImageBytes!);
       pathToScan = tempFile.path;
       tempPathToClean = tempFile.path;
+    } else {
+      pathToScan = _sourceFilePath!;
     }
 
     setState(() {
@@ -643,16 +686,75 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
           setState(() => _isDragging = false);
           if (detail.files.isEmpty) return;
           final file = detail.files.first;
-          final path = file.path;
-          final lower = path.toLowerCase();
-          if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp')) {
-            await _loadFileFromPath(path);
-          } else if (lower.endsWith('.xlsx') || lower.endsWith('.csv') || lower.endsWith('.txt')) {
+          var path = file.path.trim();
+          final name = file.name.isNotEmpty ? file.name : path.split(RegExp(r'[/\\]')).last;
+
+          if (path.startsWith('file://')) {
             try {
-              final f = File(path);
+              path = Uri.parse(path).toFilePath();
+            } catch (_) {
+              path = path.replaceFirst('file://', '');
+            }
+          }
+
+          final checkStr = '$name $path'.toLowerCase();
+          final isImage = checkStr.contains('.png') ||
+              checkStr.contains('.jpg') ||
+              checkStr.contains('.jpeg') ||
+              checkStr.contains('.webp');
+          final isSpreadsheet = checkStr.contains('.xlsx') ||
+              checkStr.contains('.csv') ||
+              checkStr.contains('.txt');
+
+          if (isImage) {
+            setState(() {
+              _isProcessing = true;
+              _statusMessage = 'Reading dropped image "$name"...';
+            });
+            Uint8List? bytes;
+            try {
+              bytes = await file.readAsBytes();
+            } catch (e) {
+              debugPrint('DropItemFile.readAsBytes error: $e');
+            }
+            if ((bytes == null || bytes.isEmpty) && path.isNotEmpty) {
+              try {
+                final diskFile = File(path);
+                if (await diskFile.exists()) {
+                  bytes = await diskFile.readAsBytes();
+                }
+              } catch (e) {
+                debugPrint('diskFile.readAsBytes error: $e');
+              }
+            }
+            if (bytes != null && bytes.isNotEmpty) {
+              await _loadFromBytes(bytes, name, filePath: path.isNotEmpty ? path : null);
+            } else {
+              if (mounted) {
+                setState(() => _isProcessing = false);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not read image data from: $name')),
+                  );
+                }
+              }
+            }
+          } else if (isSpreadsheet) {
+            try {
+              Uint8List? bytes;
+              try {
+                bytes = await file.readAsBytes();
+              } catch (_) {}
+              if ((bytes == null || bytes.isEmpty) && path.isNotEmpty) {
+                final f = File(path);
+                if (await f.exists()) {
+                  bytes = await f.readAsBytes();
+                }
+              }
+              if (bytes == null || bytes.isEmpty) return;
+
               List<String> words = [];
-              if (lower.endsWith('.xlsx')) {
-                final bytes = await f.readAsBytes();
+              if (checkStr.contains('.xlsx')) {
                 final rows = PictureDatabaseService.readXlsxSheetRows(bytes);
                 if (rows.length > 1) {
                   for (var i = 1; i < rows.length; i++) {
@@ -662,7 +764,7 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
                   }
                 }
               } else {
-                final content = await f.readAsString();
+                final content = utf8.decode(bytes, allowMalformed: true);
                 final lines = content.split(RegExp(r'[\r\n]+'));
                 for (var i = 1; i < lines.length; i++) {
                   final col = lines[i].split(',').first.trim().replaceAll('"', '');
@@ -684,7 +786,7 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
                 }
               }
             } catch (e) {
-              // ignore
+              debugPrint('Spreadsheet drop error: $e');
             }
           } else {
             if (context.mounted) {
