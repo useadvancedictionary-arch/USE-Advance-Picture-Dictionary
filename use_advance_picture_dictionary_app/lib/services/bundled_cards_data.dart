@@ -2936,9 +2936,9 @@ class BundledCardsData {
 
         antonyms: ['Skilled person'],
 
-        imageUrl: 'assets/cards/a_bad_workman_always_quarrels_with_his_tools.jpg',
+        imageUrl: 'assets/cards/a_bad_workman_always_quarrels_with_his_tools.png',
 
-        thumbnailUrl: 'assets/cards/a_bad_workman_always_quarrels_with_his_tools.jpg',
+        thumbnailUrl: 'assets/cards/a_bad_workman_always_quarrels_with_his_tools.png',
 
         category: 'People & Life Stages',
 
@@ -2958,9 +2958,9 @@ class BundledCardsData {
 
         antonyms: ['Exact figure', 'Precise number', 'Accurate calculation'],
 
-        imageUrl: 'assets/cards/a_ballpark_figure.jpg',
+        imageUrl: 'assets/cards/a_ballpark_figure.png',
 
-        thumbnailUrl: 'assets/cards/a_ballpark_figure.jpg',
+        thumbnailUrl: 'assets/cards/a_ballpark_figure.png',
 
         category: 'Science & Space',
 
@@ -2980,9 +2980,9 @@ class BundledCardsData {
 
         antonyms: ['Detailed view', 'In-depth analysis', 'Microscopic view'],
 
-        imageUrl: 'assets/cards/a_birds_eye_view.jpg',
+        imageUrl: 'assets/cards/a_birds_eye_view.png',
 
-        thumbnailUrl: 'assets/cards/a_birds_eye_view.jpg',
+        thumbnailUrl: 'assets/cards/a_birds_eye_view.png',
 
         category: 'Nature & Animals',
 
@@ -3002,9 +3002,9 @@ class BundledCardsData {
 
         antonyms: ['Misfortune', 'Bad luck', 'Curse', 'Setback'],
 
-        imageUrl: 'assets/cards/a_blessing_in_disguise.jpg',
+        imageUrl: 'assets/cards/a_blessing_in_disguise.png',
 
-        thumbnailUrl: 'assets/cards/a_blessing_in_disguise.jpg',
+        thumbnailUrl: 'assets/cards/a_blessing_in_disguise.png',
 
         category: 'Emotions & Feelings',
 
@@ -3024,9 +3024,9 @@ class BundledCardsData {
 
         antonyms: ['Clear question'],
 
-        imageUrl: 'assets/cards/a_blur_question.jpg',
+        imageUrl: 'assets/cards/a_blur_question.png',
 
-        thumbnailUrl: 'assets/cards/a_blur_question.jpg',
+        thumbnailUrl: 'assets/cards/a_blur_question.png',
 
         category: 'General Vocabulary',
 
@@ -3046,9 +3046,9 @@ class BundledCardsData {
 
         antonyms: ['Strength', 'Perfection'],
 
-        imageUrl: 'assets/cards/a_chink_in_someones_armour.jpg',
+        imageUrl: 'assets/cards/a_chink_in_someones_armour.png',
 
-        thumbnailUrl: 'assets/cards/a_chink_in_someones_armour.jpg',
+        thumbnailUrl: 'assets/cards/a_chink_in_someones_armour.png',
 
         category: 'Law & Justice',
 
@@ -3068,9 +3068,9 @@ class BundledCardsData {
 
         antonyms: ['Key player', 'Essential member', 'Main contributor'],
 
-        imageUrl: 'assets/cards/a_cog_in_the_machine.jpg',
+        imageUrl: 'assets/cards/a_cog_in_the_machine.png',
 
-        thumbnailUrl: 'assets/cards/a_cog_in_the_machine.jpg',
+        thumbnailUrl: 'assets/cards/a_cog_in_the_machine.png',
 
         category: 'Technology & Computing',
 
@@ -3090,9 +3090,9 @@ class BundledCardsData {
 
         antonyms: ['Favorite', 'Front runner', 'Well known competitor', 'Predictable winner'],
 
-        imageUrl: 'assets/cards/a_dark_horse.jpg',
+        imageUrl: 'assets/cards/a_dark_horse.png',
 
-        thumbnailUrl: 'assets/cards/a_dark_horse.jpg',
+        thumbnailUrl: 'assets/cards/a_dark_horse.png',
 
         category: 'People & Life Stages',
 
@@ -3112,9 +3112,9 @@ class BundledCardsData {
 
         antonyms: ['Generous person', 'Sharing', 'Kind hearted', 'Open handed'],
 
-        imageUrl: 'assets/cards/a_dog_in_manger.jpg',
+        imageUrl: 'assets/cards/a_dog_in_manger.png',
 
-        thumbnailUrl: 'assets/cards/a_dog_in_manger.jpg',
+        thumbnailUrl: 'assets/cards/a_dog_in_manger.png',
 
         category: 'People & Life Stages',
 
@@ -3156,9 +3156,9 @@ class BundledCardsData {
 
         antonyms: ['Failed business', 'Bankrupt entity', 'Defunct company', 'Collapsed venture', 'Non-functioning'],
 
-        imageUrl: 'assets/cards/a_going_concern.jpg',
+        imageUrl: 'assets/cards/a_going_concern.png',
 
-        thumbnailUrl: 'assets/cards/a_going_concern.jpg',
+        thumbnailUrl: 'assets/cards/a_going_concern.png',
 
         category: 'Vehicles & Transport',
 
@@ -3178,9 +3178,9 @@ class BundledCardsData {
 
         antonyms: ['Extreme', 'Excess'],
 
-        imageUrl: 'assets/cards/a_happy_medium.jpg',
+        imageUrl: 'assets/cards/a_happy_medium.png',
 
-        thumbnailUrl: 'assets/cards/a_happy_medium.jpg',
+        thumbnailUrl: 'assets/cards/a_happy_medium.png',
 
         category: 'Descriptive Qualities',
 
@@ -3200,9 +3200,9 @@ class BundledCardsData {
 
         antonyms: ['Easy task', 'Simple problem', 'Piece of cake', 'Straightforward matter'],
 
-        imageUrl: 'assets/cards/a_hard_nut_to_crack.jpg',
+        imageUrl: 'assets/cards/a_hard_nut_to_crack.png',
 
-        thumbnailUrl: 'assets/cards/a_hard_nut_to_crack.jpg',
+        thumbnailUrl: 'assets/cards/a_hard_nut_to_crack.png',
 
         category: 'Technology & Computing',
 
@@ -3222,9 +3222,9 @@ class BundledCardsData {
 
         antonyms: ['Easy task', 'Simple problem', 'Gentle person', 'Manageable situation', 'Soft personality'],
 
-        imageUrl: 'assets/cards/a_hard_nut_to_cut.jpg',
+        imageUrl: 'assets/cards/a_hard_nut_to_cut.png',
 
-        thumbnailUrl: 'assets/cards/a_hard_nut_to_cut.jpg',
+        thumbnailUrl: 'assets/cards/a_hard_nut_to_cut.png',
 
         category: 'People & Life Stages',
 
@@ -3244,9 +3244,9 @@ class BundledCardsData {
 
         antonyms: ['Changeable', 'Flexible'],
 
-        imageUrl: 'assets/cards/a_leopard_does_not_change_its_spots.jpg',
+        imageUrl: 'assets/cards/a_leopard_does_not_change_its_spots.png',
 
-        thumbnailUrl: 'assets/cards/a_leopard_does_not_change_its_spots.jpg',
+        thumbnailUrl: 'assets/cards/a_leopard_does_not_change_its_spots.png',
 
         category: 'People & Life Stages',
 
@@ -3266,9 +3266,9 @@ class BundledCardsData {
 
         antonyms: ['Accessory', 'Stranger', 'Visitor', 'Novice'],
 
-        imageUrl: 'assets/cards/a_part_of_furniture.jpg',
+        imageUrl: 'assets/cards/a_part_of_furniture.png',
 
-        thumbnailUrl: 'assets/cards/a_part_of_furniture.jpg',
+        thumbnailUrl: 'assets/cards/a_part_of_furniture.png',
 
         category: 'People & Life Stages',
 
@@ -3288,9 +3288,9 @@ class BundledCardsData {
 
         antonyms: ['Barrier to', 'Obstacle to', 'Hindrance to', 'Block to', 'Restriction on'],
 
-        imageUrl: 'assets/cards/a_passport_to.jpg',
+        imageUrl: 'assets/cards/a_passport_to.png',
 
-        thumbnailUrl: 'assets/cards/a_passport_to.jpg',
+        thumbnailUrl: 'assets/cards/a_passport_to.png',
 
         category: 'Vehicles & Transport',
 
@@ -3310,9 +3310,9 @@ class BundledCardsData {
 
         antonyms: ['Never mind', 'Keep it to yourself', 'I do not want to know', 'Say no more'],
 
-        imageUrl: 'assets/cards/a_penny_for_your_thoughts.jpg',
+        imageUrl: 'assets/cards/a_penny_for_your_thoughts.png',
 
-        thumbnailUrl: 'assets/cards/a_penny_for_your_thoughts.jpg',
+        thumbnailUrl: 'assets/cards/a_penny_for_your_thoughts.png',
 
         category: 'People & Life Stages',
 
@@ -3332,9 +3332,9 @@ class BundledCardsData {
 
         antonyms: ['Wordy explanation'],
 
-        imageUrl: 'assets/cards/a_picture_is_worth_1000_words.jpg',
+        imageUrl: 'assets/cards/a_picture_is_worth_1000_words.png',
 
-        thumbnailUrl: 'assets/cards/a_picture_is_worth_1000_words.jpg',
+        thumbnailUrl: 'assets/cards/a_picture_is_worth_1000_words.png',
 
         category: 'Music & Arts',
 
@@ -3354,9 +3354,9 @@ class BundledCardsData {
 
         antonyms: ['Encourager', 'Motivator', 'Lively person', 'Cheerful companion', 'Optimist'],
 
-        imageUrl: 'assets/cards/a_wet_blanket.jpg',
+        imageUrl: 'assets/cards/a_wet_blanket.png',
 
-        thumbnailUrl: 'assets/cards/a_wet_blanket.jpg',
+        thumbnailUrl: 'assets/cards/a_wet_blanket.png',
 
         category: 'People & Life Stages',
 
@@ -3376,9 +3376,9 @@ class BundledCardsData {
 
         antonyms: ['Productive search'],
 
-        imageUrl: 'assets/cards/a_wild_goose_chase.jpg',
+        imageUrl: 'assets/cards/a_wild_goose_chase.png',
 
-        thumbnailUrl: 'assets/cards/a_wild_goose_chase.jpg',
+        thumbnailUrl: 'assets/cards/a_wild_goose_chase.png',
 
         category: 'Nature & Animals',
 
@@ -3398,9 +3398,9 @@ class BundledCardsData {
 
         antonyms: ['Honest person', 'Truthful'],
 
-        imageUrl: 'assets/cards/a_wolf_in_sheeps_clothing.jpg',
+        imageUrl: 'assets/cards/a_wolf_in_sheeps_clothing.png',
 
-        thumbnailUrl: 'assets/cards/a_wolf_in_sheeps_clothing.jpg',
+        thumbnailUrl: 'assets/cards/a_wolf_in_sheeps_clothing.png',
 
         category: 'People & Life Stages',
 
@@ -3420,9 +3420,9 @@ class BundledCardsData {
 
         antonyms: ['Deny', 'Reclaim', 'Continue', 'Keep', 'Maintain', 'Constraint', 'Restraint'],
 
-        imageUrl: 'assets/cards/abandon.jpg',
+        imageUrl: 'assets/cards/abandon.png',
 
-        thumbnailUrl: 'assets/cards/abandon.jpg',
+        thumbnailUrl: 'assets/cards/abandon.png',
 
         category: 'Vehicles & Transport',
 
@@ -3442,9 +3442,9 @@ class BundledCardsData {
 
         antonyms: ['Elevate', 'Exalt', 'Honor', 'Uplift', 'Dignify'],
 
-        imageUrl: 'assets/cards/abase.jpg',
+        imageUrl: 'assets/cards/abase.png',
 
-        thumbnailUrl: 'assets/cards/abase.jpg',
+        thumbnailUrl: 'assets/cards/abase.png',
 
         category: 'Actions & Processes',
 
@@ -3464,9 +3464,9 @@ class BundledCardsData {
 
         antonyms: ['Encourage', 'Comfort', 'Reassure', 'Embolden'],
 
-        imageUrl: 'assets/cards/abash.jpg',
+        imageUrl: 'assets/cards/abash.png',
 
-        thumbnailUrl: 'assets/cards/abash.jpg',
+        thumbnailUrl: 'assets/cards/abash.png',
 
         category: 'Emotions & Feelings',
 
@@ -3486,9 +3486,9 @@ class BundledCardsData {
 
         antonyms: ['Increase', 'Intensify', 'Escalate', 'Worsen', 'Aggravate', 'Heighten'],
 
-        imageUrl: 'assets/cards/abate.jpg',
+        imageUrl: 'assets/cards/abate.png',
 
-        thumbnailUrl: 'assets/cards/abate.jpg',
+        thumbnailUrl: 'assets/cards/abate.png',
 
         category: 'Nature & Animals',
 
@@ -3508,9 +3508,9 @@ class BundledCardsData {
 
         antonyms: ['Accession', 'Addition', 'Boost', 'Enlargement', 'Gain', 'Increase', 'Increment'],
 
-        imageUrl: 'assets/cards/abatement.jpg',
+        imageUrl: 'assets/cards/abatement.png',
 
-        thumbnailUrl: 'assets/cards/abatement.jpg',
+        thumbnailUrl: 'assets/cards/abatement.png',
 
         category: 'Actions & Processes',
 
@@ -3530,9 +3530,9 @@ class BundledCardsData {
 
         antonyms: ['Tavern', 'Marketplace', 'City hall', 'Public house', 'Secular building'],
 
-        imageUrl: 'assets/cards/abbey.jpg',
+        imageUrl: 'assets/cards/abbey.png',
 
-        thumbnailUrl: 'assets/cards/abbey.jpg',
+        thumbnailUrl: 'assets/cards/abbey.png',
 
         category: 'Nature & Animals',
 
@@ -3552,9 +3552,9 @@ class BundledCardsData {
 
         antonyms: ['Novice', 'Monk', 'Layman', 'Subordinate', 'Follower'],
 
-        imageUrl: 'assets/cards/abbot.jpg',
+        imageUrl: 'assets/cards/abbot.png',
 
-        thumbnailUrl: 'assets/cards/abbot.jpg',
+        thumbnailUrl: 'assets/cards/abbot.png',
 
         category: 'People & Life Stages',
 
@@ -3574,9 +3574,9 @@ class BundledCardsData {
 
         antonyms: ['Assume', 'Claim', 'Retain', 'Maintain', 'Accede'],
 
-        imageUrl: 'assets/cards/abdicate.jpg',
+        imageUrl: 'assets/cards/abdicate.png',
 
-        thumbnailUrl: 'assets/cards/abdicate.jpg',
+        thumbnailUrl: 'assets/cards/abdicate.png',
 
         category: 'Vehicles & Transport',
 
@@ -3596,9 +3596,9 @@ class BundledCardsData {
 
         antonyms: ['Chest', 'Thorax', 'Back', 'Spine', 'Shoulder'],
 
-        imageUrl: 'assets/cards/abdom.jpg',
+        imageUrl: 'assets/cards/abdom.png',
 
-        thumbnailUrl: 'assets/cards/abdom.jpg',
+        thumbnailUrl: 'assets/cards/abdom.png',
 
         category: 'Medical & Health',
 
@@ -3662,9 +3662,9 @@ class BundledCardsData {
 
         antonyms: ['Normal', 'Regular', 'Usual', 'Same', 'True', 'Common', 'Unexceptional', 'Ordinary'],
 
-        imageUrl: 'assets/cards/aberrant.jpg',
+        imageUrl: 'assets/cards/aberrant.png',
 
-        thumbnailUrl: 'assets/cards/aberrant.jpg',
+        thumbnailUrl: 'assets/cards/aberrant.png',
 
         category: 'People & Life Stages',
 
@@ -3684,9 +3684,9 @@ class BundledCardsData {
 
         antonyms: ['Norm', 'Standard', 'Regularity', 'Conformity', 'Consistency'],
 
-        imageUrl: 'assets/cards/aberration.jpg',
+        imageUrl: 'assets/cards/aberration.png',
 
-        thumbnailUrl: 'assets/cards/aberration.jpg',
+        thumbnailUrl: 'assets/cards/aberration.png',
 
         category: 'Music & Arts',
 
@@ -3706,9 +3706,9 @@ class BundledCardsData {
 
         antonyms: ['Prevent', 'Discourage', 'Stop', 'Deter', 'Oppose'],
 
-        imageUrl: 'assets/cards/abet.jpg',
+        imageUrl: 'assets/cards/abet.png',
 
-        thumbnailUrl: 'assets/cards/abet.jpg',
+        thumbnailUrl: 'assets/cards/abet.png',
 
         category: 'Law & Justice',
 
@@ -3728,9 +3728,9 @@ class BundledCardsData {
 
         antonyms: ['Active', 'Ongoing', 'In progress'],
 
-        imageUrl: 'assets/cards/abey.jpg',
+        imageUrl: 'assets/cards/abey.png',
 
-        thumbnailUrl: 'assets/cards/abey.jpg',
+        thumbnailUrl: 'assets/cards/abey.png',
 
         category: 'Law & Justice',
 
@@ -3750,9 +3750,9 @@ class BundledCardsData {
 
         antonyms: ['Activity', 'Continuity', 'Progress', 'Resolution'],
 
-        imageUrl: 'assets/cards/abeyance.jpg',
+        imageUrl: 'assets/cards/abeyance.png',
 
-        thumbnailUrl: 'assets/cards/abeyance.jpg',
+        thumbnailUrl: 'assets/cards/abeyance.png',
 
         category: 'Law & Justice',
 
@@ -3772,9 +3772,9 @@ class BundledCardsData {
 
         antonyms: ['Activity', 'Continuation', 'Progress', 'Action'],
 
-        imageUrl: 'assets/cards/abeyancy.jpg',
+        imageUrl: 'assets/cards/abeyancy.png',
 
-        thumbnailUrl: 'assets/cards/abeyancy.jpg',
+        thumbnailUrl: 'assets/cards/abeyancy.png',
 
         category: 'Law & Justice',
 
@@ -3794,9 +3794,9 @@ class BundledCardsData {
 
         antonyms: ['Admire', 'Approve', 'Esteem'],
 
-        imageUrl: 'assets/cards/abhor.jpg',
+        imageUrl: 'assets/cards/abhor.png',
 
-        thumbnailUrl: 'assets/cards/abhor.jpg',
+        thumbnailUrl: 'assets/cards/abhor.png',
 
         category: 'Emotions & Feelings',
 
@@ -3816,9 +3816,9 @@ class BundledCardsData {
 
         antonyms: ['Dignified', 'Noble', 'Proud', 'Exalted', 'Honorable'],
 
-        imageUrl: 'assets/cards/abject.jpg',
+        imageUrl: 'assets/cards/abject.png',
 
-        thumbnailUrl: 'assets/cards/abject.jpg',
+        thumbnailUrl: 'assets/cards/abject.png',
 
         category: 'Emotions & Feelings',
 
@@ -3838,9 +3838,9 @@ class BundledCardsData {
 
         antonyms: ['Enslave', 'Subjugate', 'Oppress', 'Bind', 'Yoke'],
 
-        imageUrl: 'assets/cards/abjugate.jpg',
+        imageUrl: 'assets/cards/abjugate.png',
 
-        thumbnailUrl: 'assets/cards/abjugate.jpg',
+        thumbnailUrl: 'assets/cards/abjugate.png',
 
         category: 'People & Life Stages',
 
@@ -3860,9 +3860,9 @@ class BundledCardsData {
 
         antonyms: ['Accept', 'Embrace', 'Support', 'Maintain', 'Uphold'],
 
-        imageUrl: 'assets/cards/abjure.jpg',
+        imageUrl: 'assets/cards/abjure.png',
 
-        thumbnailUrl: 'assets/cards/abjure.jpg',
+        thumbnailUrl: 'assets/cards/abjure.png',
 
         category: 'Law & Justice',
 
@@ -3904,9 +3904,9 @@ class BundledCardsData {
 
         antonyms: ['Claim', 'Assert', 'Indulge', 'Retain', 'Accept'],
 
-        imageUrl: 'assets/cards/abnegate.jpg',
+        imageUrl: 'assets/cards/abnegate.png',
 
-        thumbnailUrl: 'assets/cards/abnegate.jpg',
+        thumbnailUrl: 'assets/cards/abnegate.png',
 
         category: 'People & Life Stages',
 
@@ -3926,9 +3926,9 @@ class BundledCardsData {
 
         antonyms: ['Homelessness', 'Displacement', 'Vagrancy', 'Wandering', 'Exile'],
 
-        imageUrl: 'assets/cards/abode.jpg',
+        imageUrl: 'assets/cards/abode.png',
 
-        thumbnailUrl: 'assets/cards/abode.jpg',
+        thumbnailUrl: 'assets/cards/abode.png',
 
         category: 'Science & Space',
 
@@ -3948,9 +3948,9 @@ class BundledCardsData {
 
         antonyms: ['Protect', 'Preserve', 'Create'],
 
-        imageUrl: 'assets/cards/abolish.jpg',
+        imageUrl: 'assets/cards/abolish.png',
 
-        thumbnailUrl: 'assets/cards/abolish.jpg',
+        thumbnailUrl: 'assets/cards/abolish.png',
 
         category: 'Law & Justice',
 
@@ -3970,9 +3970,9 @@ class BundledCardsData {
 
         antonyms: ['Establishment', 'Introduction', 'Retention', 'Continuation', 'Legalization'],
 
-        imageUrl: 'assets/cards/abolition.jpg',
+        imageUrl: 'assets/cards/abolition.png',
 
-        thumbnailUrl: 'assets/cards/abolition.jpg',
+        thumbnailUrl: 'assets/cards/abolition.png',
 
         category: 'Law & Justice',
 
@@ -3992,9 +3992,9 @@ class BundledCardsData {
 
         antonyms: ['Continue', 'Proceed', 'Start', 'Begin', 'Resume', 'Carry on'],
 
-        imageUrl: 'assets/cards/abort.jpg',
+        imageUrl: 'assets/cards/abort.png',
 
-        thumbnailUrl: 'assets/cards/abort.jpg',
+        thumbnailUrl: 'assets/cards/abort.png',
 
         category: 'Medical & Health',
 

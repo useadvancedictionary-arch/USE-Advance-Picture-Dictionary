@@ -47,15 +47,15 @@ class PictureDatabaseService {
 
     final db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await _createDB(db, version);
         await _seedFullDictionary(db);
         await cleanupDuplicates(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 6) {
-          // Re-seed updated bundled offline card mappings into SQLite
+        if (oldVersion < 7) {
+          // v7: Removed duplicate uncropped .jpg files; switched DB refs to .png branded cards
           await _seedFullDictionary(db);
         }
         await cleanupDuplicates(db);
