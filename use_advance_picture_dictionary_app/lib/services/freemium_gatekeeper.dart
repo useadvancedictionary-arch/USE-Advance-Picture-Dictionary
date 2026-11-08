@@ -6,8 +6,10 @@ class FreemiumGatekeeper {
   static const int freeWordLimit = 1000;
 
   /// Checks if a word entry at [index] in the dictionary is unlocked.
-  static bool isWordUnlocked(int index) {
+  static bool isWordUnlocked(int? index) {
     if (BillingService.instance.isProUnlocked) return true;
+    if (index == null) return true;
     return index < freeWordLimit;
   }
 }
+

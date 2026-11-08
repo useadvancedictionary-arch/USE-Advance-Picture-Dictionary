@@ -10,6 +10,9 @@ import '../services/favorites_history_service.dart';
 import '../services/firestore_sync_service.dart';
 import 'favorites_screen.dart';
 import 'history_screen.dart';
+import '../services/billing_service.dart';
+import '../services/freemium_gatekeeper.dart';
+import '../widgets/pro_paywall_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -207,6 +210,28 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          AnimatedBuilder(
+            animation: BillingService.instance,
+            builder: (context, _) {
+              if (BillingService.instance.isProUnlocked) {
+                return const SizedBox.shrink();
+              }
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFB703),
+                    foregroundColor: const Color(0xFF0D1B2A),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  icon: const Icon(Icons.workspace_premium_rounded, size: 16),
+                  label: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  onPressed: () => ProPaywallSheet.show(context),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Favourites',
             icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
@@ -525,6 +550,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ? entry.partOfSpeech.substring(0, 1).toUpperCase()
         : '?';
 
+    final isUnlocked = FreemiumGatekeeper.isWordUnlocked(index);
+
     return Card(
       elevation: 2,
       shadowColor: Colors.black12,
@@ -532,6 +559,10 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () {
+          if (!isUnlocked) {
+            ProPaywallSheet.show(context, triggeredWord: entry.word);
+            return;
+          }
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -558,6 +589,38 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                  // Lock overlay for words beyond the free limit
+                  if (!isUnlocked)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D1B2A).withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFFFB703), width: 1.2),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.lock_rounded, size: 14, color: Color(0xFFFFB703)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'PRO',
+                                  style: TextStyle(
+                                    color: Color(0xFFFFB703),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   // Favourite Heart Toggle on top-right of image card
                   Positioned(
                     top: 6,
