@@ -10,6 +10,7 @@ import '../models/picture_word_entry.dart';
 import '../services/picture_database_service.dart';
 import '../services/firestore_sync_service.dart';
 import '../services/cloud_image_service.dart';
+import '../services/card_asset_pack_service.dart';
 
 class PictureCropEditorScreen extends StatefulWidget {
   final PictureWordEntry entry;
@@ -76,8 +77,10 @@ class _PictureCropEditorScreenState extends State<PictureCropEditorScreen> {
   Future<Uint8List> _fetchBytesForUrl(String url) async {
     final clean = url.trim();
 
-    // 1. Asset
+    // 1. Asset (via Play Asset Delivery or rootBundle)
     if (clean.startsWith('assets/')) {
+      final padBytes = await CardAssetPackService.instance.loadCardBytes(clean);
+      if (padBytes != null) return padBytes;
       final byteData = await rootBundle.load(clean);
       return byteData.buffer.asUint8List();
     }

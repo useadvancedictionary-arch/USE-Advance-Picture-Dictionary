@@ -16,6 +16,7 @@ import 'package:file_picker/file_picker.dart';
 import '../services/firestore_sync_service.dart';
 import '../services/cloud_image_service.dart';
 import '../services/smart_auto_tagger.dart';
+import '../services/card_asset_pack_service.dart';
 
 class PictureWordDetailScreen extends StatefulWidget {
   final PictureWordEntry entry;
@@ -525,11 +526,18 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
       final cleanUrl = _currentEntry.imageUrl.trim();
 
       if (cleanUrl.startsWith('assets/')) {
-        final byteData = await rootBundle.load(cleanUrl);
+        final padBytes = await CardAssetPackService.instance.loadCardBytes(cleanUrl);
+        final Uint8List bytes;
+        if (padBytes != null) {
+          bytes = padBytes;
+        } else {
+          final byteData = await rootBundle.load(cleanUrl);
+          bytes = byteData.buffer.asUint8List();
+        }
         final tempDir = await getTemporaryDirectory();
         final safeWord = _currentEntry.word.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
         final file = File('${tempDir.path}/${safeWord}_card.png');
-        await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+        await file.writeAsBytes(bytes, flush: true);
         localFilePath = file.path;
       } else if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
         final client = HttpClient();

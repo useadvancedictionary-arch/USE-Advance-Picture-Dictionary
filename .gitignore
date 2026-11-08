@@ -49,3 +49,8 @@ use_advance_picture_dictionary_app/windows/runner/ocr_tool.exe
 
 # Exclude long-filename branding tiles
 Brandings/Pics Tiles Done/
+
+# Play Asset Delivery assets (assets/cards is already tracked, don't duplicate into git)
+**/cards_pack/src/main/assets/**
+**/android/key.properties
+**/*.jks

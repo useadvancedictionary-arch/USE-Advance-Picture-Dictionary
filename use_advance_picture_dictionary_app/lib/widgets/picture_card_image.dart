@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/card_asset_pack_service.dart';
 
 /// Unified Picture Image component that supports local assets, local files, and remote URLs
 class PictureCardImage extends StatelessWidget {
@@ -93,6 +94,43 @@ class PictureCardImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cleanUrl = imageUrl.trim();
+
+    // 0. Android Play Asset Delivery (PAD) install-time asset pack for cards
+    if (!kIsWeb && Platform.isAndroid && cleanUrl.contains('cards/')) {
+      final cached = CardAssetPackService.instance.getFromCache(cleanUrl);
+      if (cached != null) {
+        return Image.memory(
+          cached,
+          fit: fit,
+          width: width,
+          height: height,
+          errorBuilder: (_, _, _) => _buildFallback(context, theme),
+        );
+      }
+      return FutureBuilder<Uint8List?>(
+        future: CardAssetPackService.instance.loadCardBytes(cleanUrl),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+            return Image.memory(
+              snapshot.data!,
+              fit: fit,
+              width: width,
+              height: height,
+              errorBuilder: (_, _, _) => _buildFallback(context, theme),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return placeholder ??
+                Container(
+                  width: width,
+                  height: height,
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                );
+          }
+          return _buildFallback(context, theme);
+        },
+      );
+    }
 
     // 1. Local Flutter Asset (e.g. assets/cards/abandon.jpg)
     if (cleanUrl.startsWith('assets/')) {

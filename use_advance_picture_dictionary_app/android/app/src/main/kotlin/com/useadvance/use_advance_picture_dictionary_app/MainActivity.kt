@@ -5,12 +5,55 @@ import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.InputStream
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.useadvance.picture_dict/interlink"
+    private val ASSET_CHANNEL = "com.useadvance.picture_dict/asset_pack"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Asset pack loader channel for Play Asset Delivery (PAD)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ASSET_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getCardBytes" -> {
+                    val rawPath = call.argument<String>("path")
+                    if (rawPath != null) {
+                        try {
+                            // Strip leading "assets/" if present
+                            val cleanPath = rawPath.removePrefix("assets/")
+                            val inputStream: InputStream = context.assets.open(cleanPath)
+                            val bytes = inputStream.readBytes()
+                            inputStream.close()
+                            result.success(bytes)
+                        } catch (e: Exception) {
+                            result.error("NOT_FOUND", "Asset not found: $rawPath (${e.message})", null)
+                        }
+                    } else {
+                        result.error("INVALID_ARG", "Path parameter was null", null)
+                    }
+                }
+                "checkCardExists" -> {
+                    val rawPath = call.argument<String>("path")
+                    if (rawPath != null) {
+                        try {
+                            val cleanPath = rawPath.removePrefix("assets/")
+                            val inputStream = context.assets.open(cleanPath)
+                            inputStream.close()
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Companion app interlink channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "launchAndroidCompanion" -> {
