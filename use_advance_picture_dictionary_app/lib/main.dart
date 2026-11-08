@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'firebase_init_state.dart';
 import 'screens/home_screen.dart';
+import 'services/billing_service.dart';
+import 'services/ad_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +16,14 @@ void main() async {
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+  }
+
+  // Initialize In-App Purchases and Mobile Ads
+  try {
+    await BillingService.instance.init();
+    await AdService.instance.init();
+  } catch (e) {
+    debugPrint('Monetization init error: $e');
   }
 
   // Initialize Firebase
