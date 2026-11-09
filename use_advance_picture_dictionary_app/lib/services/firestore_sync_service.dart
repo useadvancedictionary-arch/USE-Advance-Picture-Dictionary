@@ -39,14 +39,17 @@ class FirestoreSyncService {
   FirestoreSyncService._init();
 
   static bool get firebaseReady => Firebase.apps.isNotEmpty;
+  String? lastAuthError;
 
   /// Ensure the user is signed in (anonymous is fine for reads and writes under open rules).
   Future<bool> _ensureSignedIn() async {
     if (FirebaseAuth.instance.currentUser != null) return true;
     try {
       await FirebaseAuth.instance.signInAnonymously();
+      lastAuthError = null;
       return true;
     } catch (e) {
+      lastAuthError = e.toString();
       debugPrint('FirestoreSyncService auth error: $e');
       return false;
     }
@@ -328,8 +331,11 @@ class FirestoreSyncService {
     if (!firebaseReady) {
       return const SyncResult(success: false, message: 'Firebase is not initialized.');
     }
-    if (!(await _ensureSignedIn())) {
-      return const SyncResult(success: false, message: 'Could not connect to Firebase sync.');
+    
+    // Attempt authentication, but proceed to test connection if Firestore has open read rules
+    final signedIn = await _ensureSignedIn();
+    if (!signedIn) {
+      debugPrint('FirestoreSyncService: Auth did not succeed ($lastAuthError). Trying Firestore directly...');
     }
 
     try {
@@ -377,9 +383,10 @@ class FirestoreSyncService {
       );
     } catch (e) {
       debugPrint('FirestoreSyncService sync error: $e');
+      final detail = lastAuthError != null ? '$e [Auth: $lastAuthError]' : '$e';
       return SyncResult(
         success: false,
-        message: 'Sync failed: $e',
+        message: 'Sync failed: $detail',
       );
     }
   }

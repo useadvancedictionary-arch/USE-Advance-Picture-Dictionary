@@ -42,10 +42,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCdb5Br9FDQkl3DPWV0raSNBnuK0zpOk60',
-    appId: '1:105971080286:android:e2f08d09652f842ca068cf',
+    apiKey: 'AIzaSyD186vZ2z804uKW9fyuyk5kIJDw--YDfzc',
+    appId: '1:105971080286:web:387599eb7c2243bfa068cf',
     messagingSenderId: '105971080286',
     projectId: 'use-advance-picture-dict-1861e',
+    authDomain: 'use-advance-picture-dict-1861e.firebaseapp.com',
     storageBucket: 'use-advance-picture-dict-1861e.firebasestorage.app',
   );
 
