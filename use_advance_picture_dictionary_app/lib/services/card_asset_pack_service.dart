@@ -20,9 +20,20 @@ class CardAssetPackService {
   }
 
   /// Check if the image bytes are already cached in memory
-  Uint8List? getFromCache(String path) {
+  Uint8List? getFromCache(String path, [String? word]) {
     final key = _normalizeKey(path);
-    return _cache[key];
+    if (_cache.containsKey(key)) return _cache[key];
+
+    if (word != null && word.trim().isNotEmpty) {
+      final safeWord = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+      for (final ext in ['jpg', 'png']) {
+        final wk1 = 'assets/cards/$safeWord.$ext';
+        final wk2 = 'cards/$safeWord.$ext';
+        if (_cache.containsKey(wk1)) return _cache[wk1];
+        if (_cache.containsKey(wk2)) return _cache[wk2];
+      }
+    }
+    return null;
   }
 
   String _normalizeKey(String path) {
@@ -30,13 +41,61 @@ class CardAssetPackService {
   }
 
   /// Load raw image bytes for a card from the asset pack or local disk
-  Future<Uint8List?> loadCardBytes(String rawPath) async {
+  Future<Uint8List?> loadCardBytes(String rawPath, [String? word]) async {
     final path = _normalizeKey(rawPath);
-    if (path.isEmpty) return null;
+    if (path.isEmpty && (word == null || word.trim().isEmpty)) return null;
 
-    if (_cache.containsKey(path)) {
-      return _cache[path];
+    final cached = getFromCache(rawPath, word);
+    if (cached != null) return cached;
+
+    // Build ordered list of candidate paths to check
+    final candidates = <String>[];
+    if (path.isNotEmpty) {
+      candidates.add(path);
+      // Clean path if it has "file://" or leading slashes
+      final clean = path.replaceFirst('file://', '');
+      final filename = clean.split('/').last;
+      final nameWithoutExt = filename.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+      final baseName = nameWithoutExt
+          .replaceAll(RegExp(r'(_card)?_\d+$'), '')
+          .replaceAll(RegExp(r'_card$'), '');
+
+      if (baseName.isNotEmpty && baseName != nameWithoutExt) {
+        candidates.add('assets/cards/$baseName.jpg');
+        candidates.add('assets/cards/$baseName.png');
+        candidates.add('cards/$baseName.jpg');
+        candidates.add('cards/$baseName.png');
+      }
+
+      if (clean.contains('cards/')) {
+        candidates.add('assets/cards/$filename');
+        candidates.add('cards/$filename');
+      }
     }
+
+    if (word != null && word.trim().isNotEmpty) {
+      final safeWord = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+      candidates.add('assets/cards/$safeWord.jpg');
+      candidates.add('assets/cards/$safeWord.png');
+      candidates.add('cards/$safeWord.jpg');
+      candidates.add('cards/$safeWord.png');
+    }
+
+    // Try candidates one by one
+    for (final candidate in candidates) {
+      final bytes = await _loadSinglePathBytes(candidate);
+      if (bytes != null && bytes.isNotEmpty) {
+        if (path.isNotEmpty) {
+          _putInCache(path, bytes);
+        }
+        return bytes;
+      }
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _loadSinglePathBytes(String path) async {
+    if (_cache.containsKey(path)) return _cache[path];
 
     // 1. On Android: Try loading via native AssetManager (Play Asset Delivery install-time pack)
     if (!kIsWeb && Platform.isAndroid) {
@@ -96,41 +155,12 @@ class CardAssetPackService {
   }
 
   /// Check if a card asset exists
-  Future<bool> hasCard(String rawPath) async {
+  Future<bool> hasCard(String rawPath, [String? word]) async {
     final path = _normalizeKey(rawPath);
     if (_cache.containsKey(path)) return true;
 
-    if (!kIsWeb && Platform.isAndroid) {
-      try {
-        final exists = await _channel.invokeMethod<bool>('checkCardExists', {'path': path});
-        return exists ?? false;
-      } catch (_) {
-        return false;
-      }
-    }
-
-    // On other platforms, check file existence
-    if (!kIsWeb) {
-      final filename = path.split(RegExp(r'[/\\]')).last;
-      final exeDir = File(Platform.resolvedExecutable).parent.path;
-      final checkPaths = [
-        '$exeDir/data/flutter_assets/assets/cards/$filename',
-        '$exeDir/assets/cards/$filename',
-        'D:/USE_Advance_Picture_Dictionary/use_advance_picture_dictionary_app/assets/cards/$filename',
-        'assets/cards/$filename',
-      ];
-      for (final p in checkPaths) {
-        if (File(p).existsSync()) return true;
-      }
-    }
-
-    try {
-      final clean = path.startsWith('assets/') ? path : 'assets/$path';
-      await rootBundle.load(clean);
-      return true;
-    } catch (_) {
-      return false;
-    }
+    final bytes = await loadCardBytes(rawPath, word);
+    return bytes != null && bytes.isNotEmpty;
   }
 
   void _putInCache(String key, Uint8List bytes) {
