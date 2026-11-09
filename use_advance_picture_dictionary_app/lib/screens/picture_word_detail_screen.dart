@@ -17,6 +17,8 @@ import '../services/firestore_sync_service.dart';
 import '../services/cloud_image_service.dart';
 import '../services/smart_auto_tagger.dart';
 import '../services/card_asset_pack_service.dart';
+import '../services/freemium_gatekeeper.dart';
+import '../widgets/pro_paywall_sheet.dart';
 
 class PictureWordDetailScreen extends StatefulWidget {
   final PictureWordEntry entry;
@@ -54,6 +56,17 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
     _initTts();
     FavoritesHistoryService.instance.recordHistory(widget.entry.word);
     _loadAdjacentEntries();
+
+    // Verify word is unlocked; if locked, show paywall sheet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !FreemiumGatekeeper.isWordUnlocked(_currentEntry.word)) {
+        ProPaywallSheet.show(context, triggeredWord: _currentEntry.word).then((bought) {
+          if (bought != true && mounted && !FreemiumGatekeeper.isWordUnlocked(_currentEntry.word)) {
+            Navigator.of(context).pop();
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadAdjacentEntries() async {
@@ -109,6 +122,10 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
   }
 
   void _switchToEntry(PictureWordEntry entry) {
+    if (!FreemiumGatekeeper.isWordUnlocked(entry.word)) {
+      ProPaywallSheet.show(context, triggeredWord: entry.word);
+      return;
+    }
     _tts.stop();
     setState(() {
       _currentEntry = entry;
@@ -843,11 +860,22 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
                       ),
                       onPressed: _prevEntry != null ? _goToPrevious : null,
                       icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 15),
-                      label: Text(
-                        _prevEntry != null ? '< ${_prevEntry!.word}' : '< Previous',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _prevEntry != null ? '< ${_prevEntry!.word}' : '< Previous',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                            ),
+                          ),
+                          if (_prevEntry != null && !FreemiumGatekeeper.isWordUnlocked(_prevEntry!.word)) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.lock_rounded, size: 12, color: Color(0xFFFFB703)),
+                          ],
+                        ],
                       ),
                     ),
                   ),
@@ -873,6 +901,10 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                           ),
+                          if (_nextEntry != null && !FreemiumGatekeeper.isWordUnlocked(_nextEntry!.word)) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.lock_rounded, size: 12, color: Color(0xFFFFB703)),
+                          ],
                           const SizedBox(width: 5),
                           const Icon(Icons.arrow_forward_ios_rounded, size: 15),
                         ],

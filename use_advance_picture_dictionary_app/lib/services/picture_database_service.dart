@@ -271,6 +271,18 @@ class PictureDatabaseService {
     return deduplicateEntries(list);
   }
 
+  /// Returns the lowercase set of the first [limit] words sorted alphabetically
+  Future<Set<String>> getFreeWordSet({int limit = 1000}) async {
+    final db = await database;
+    final maps = await db.query(
+      'picture_entries',
+      columns: ['word'],
+      orderBy: 'word ASC',
+      limit: limit,
+    );
+    return maps.map((m) => (m['word'] as String).trim().toLowerCase()).toSet();
+  }
+
   Future<List<PictureWordEntry>> searchEntries(String query) async {
     final db = await database;
     final trimmed = query.trim().toLowerCase();

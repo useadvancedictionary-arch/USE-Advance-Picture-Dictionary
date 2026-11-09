@@ -81,10 +81,14 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!mounted) return;
         if (entry != null) {
           final targetEntry = entry;
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PictureWordDetailScreen(entry: targetEntry)),
-          );
+          if (!FreemiumGatekeeper.isWordUnlocked(targetEntry.word)) {
+            ProPaywallSheet.show(context, triggeredWord: targetEntry.word);
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => PictureWordDetailScreen(entry: targetEntry)),
+            );
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Showing results for: "$trimmed"')),
@@ -100,6 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
     try {
       final allEntries = await PictureDatabaseService.instance.getAllEntries();
+      FreemiumGatekeeper.setFreeWords(allEntries.map((e) => e.word));
       final categories = await PictureDatabaseService.instance.getAllCategories();
       if (mounted) {
         setState(() {
@@ -614,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? entry.partOfSpeech.substring(0, 1).toUpperCase()
         : '?';
 
-    final isUnlocked = FreemiumGatekeeper.isWordUnlocked(index);
+    final isUnlocked = FreemiumGatekeeper.isWordUnlocked(entry.word);
 
     return Card(
       elevation: 2,
@@ -699,6 +704,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: InkWell(
                             customBorder: const CircleBorder(),
                             onTap: () {
+                              if (!isUnlocked) {
+                                ProPaywallSheet.show(context, triggeredWord: entry.word);
+                                return;
+                              }
                               FavoritesHistoryService.instance.toggleFavorite(entry.word);
                             },
                             child: Padding(

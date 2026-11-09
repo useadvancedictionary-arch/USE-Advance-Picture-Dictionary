@@ -8,6 +8,7 @@ import 'firebase_init_state.dart';
 import 'screens/home_screen.dart';
 import 'services/billing_service.dart';
 import 'services/ad_service.dart';
+import 'services/freemium_gatekeeper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,10 +19,11 @@ void main() async {
     databaseFactory = databaseFactoryFfi;
   }
 
-  // Initialize In-App Purchases and Mobile Ads
+  // Initialize In-App Purchases, Mobile Ads, and Freemium Gatekeeper
   try {
     await BillingService.instance.init();
     await AdService.instance.init();
+    await FreemiumGatekeeper.init();
   } catch (e) {
     debugPrint('Monetization init error: $e');
   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/picture_word_entry.dart';
 import '../services/favorites_history_service.dart';
+import '../services/freemium_gatekeeper.dart';
 import '../widgets/picture_card_image.dart';
+import '../widgets/pro_paywall_sheet.dart';
 import 'picture_word_detail_screen.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -310,6 +312,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Widget _buildFavoriteItemCard(ThemeData theme, PictureWordEntry entry, int index) {
+    final isUnlocked = FreemiumGatekeeper.isWordUnlocked(entry.word);
+
     return Card(
       elevation: 0,
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
@@ -320,6 +324,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
+          if (!isUnlocked) {
+            ProPaywallSheet.show(context, triggeredWord: entry.word);
+            return;
+          }
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -361,6 +369,32 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (!isUnlocked) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D1B2A),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFFFB703), width: 1),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.lock_rounded, size: 11, color: Color(0xFFFFB703)),
+                                SizedBox(width: 3),
+                                Text(
+                                  'PRO',
+                                  style: TextStyle(
+                                    color: Color(0xFFFFB703),
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(

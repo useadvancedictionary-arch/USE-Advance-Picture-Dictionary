@@ -4,6 +4,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../widgets/picture_card_image.dart';
 import '../models/picture_word_entry.dart';
 import '../services/picture_database_service.dart';
+import '../services/billing_service.dart';
+import '../services/freemium_gatekeeper.dart';
 
 class PictureQuizScreen extends StatefulWidget {
   const PictureQuizScreen({super.key});
@@ -30,7 +32,10 @@ class _PictureQuizScreenState extends State<PictureQuizScreen> {
 
   Future<void> _loadQuiz() async {
     setState(() => _isLoading = true);
-    final entries = await PictureDatabaseService.instance.getAllEntries();
+    var entries = await PictureDatabaseService.instance.getAllEntries();
+    if (!BillingService.instance.isProUnlocked) {
+      entries = entries.where((e) => FreemiumGatekeeper.isWordUnlocked(e.word)).toList();
+    }
     entries.shuffle(Random());
     if (mounted) {
       setState(() {
