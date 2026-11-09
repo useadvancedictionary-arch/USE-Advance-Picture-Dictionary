@@ -11,11 +11,11 @@ class AdService {
 
   bool _isInitialized = false;
 
-  // Official Google AdMob sample test unit IDs (safe for testing & closed testing)
+  // Production Google AdMob ad unit IDs
   static String get bannerAdUnitId {
     if (kIsWeb) return '';
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/6300978111'; // Google test banner
+      return 'ca-app-pub-3912695475743612/9666570517'; // Production banner
     }
     return '';
   }

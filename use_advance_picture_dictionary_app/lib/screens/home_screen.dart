@@ -13,6 +13,7 @@ import 'history_screen.dart';
 import '../services/billing_service.dart';
 import '../services/freemium_gatekeeper.dart';
 import '../widgets/pro_paywall_sheet.dart';
+import '../widgets/banner_ad_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -348,6 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ],
       ),
+      bottomNavigationBar: const BannerAdWidget(),
       body: Container(
         width: double.infinity,
         height: double.infinity,
