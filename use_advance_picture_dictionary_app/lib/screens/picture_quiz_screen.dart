@@ -160,7 +160,7 @@ class _PictureQuizScreenState extends State<PictureQuizScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Visual Vocabulary Quiz'),
+        title: const Text('Vocabulary Quiz'),
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -183,142 +183,180 @@ class _PictureQuizScreenState extends State<PictureQuizScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Progress Indicator
-                LinearProgressIndicator(
-                  value: (_currentIndex + 1) / _allEntries.length,
-                  borderRadius: BorderRadius.circular(8),
-                  minHeight: 8,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Question ${_currentIndex + 1} of ${_allEntries.length}',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-
-                // Question Title
-                const Text(
-                  'What is shown in this picture?',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-
-                // HD Picture Card
-                Expanded(
-                  flex: 5,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      color: Colors.black12,
-                      child: PictureCardImage(
-                        imageUrl: currentEntry.imageUrl,
-                        fit: BoxFit.cover,
-                        word: currentEntry.word,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Meaning Clue
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.lightbulb_outline, size: 18, color: theme.colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Clue [${currentEntry.partOfSpeech}]: ${currentEntry.englishMeaning}',
-                          style: const TextStyle(fontSize: 12.5),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // 4 Multiple Choice Options
-                Expanded(
-                  flex: 4,
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 2.8,
-                    children: _currentOptions.map((opt) {
-                      final isCorrect = opt == currentEntry.word;
-                      final isSelected = opt == _selectedOption;
-
-                      Color? btnColor;
-                      Color textColor = Colors.black87;
-
-                      if (_hasAnswered) {
-                        if (isCorrect) {
-                          btnColor = Colors.green.shade600;
-                          textColor = Colors.white;
-                        } else if (isSelected) {
-                          btnColor = Colors.red.shade600;
-                          textColor = Colors.white;
-                        }
-                      }
-
-                      return ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: btnColor,
-                          foregroundColor: textColor,
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            side: BorderSide(
-                              color: _hasAnswered && isCorrect ? Colors.green : Colors.grey.shade300,
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                        onPressed: _hasAnswered ? null : () => _handleOptionSelected(opt),
-                        child: Text(
-                          opt,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-
-                // Next Button
-                if (_hasAnswered)
-                  ElevatedButton.icon(
+      bottomNavigationBar: _hasAnswered
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.colorScheme.primary,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: Text(
-                      _currentIndex + 1 < _allEntries.length ? 'Next Word' : 'See Results',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      _currentIndex + 1 < _allEntries.length
+                          ? 'Next Word'
+                          : 'See Results',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     onPressed: _nextQuestion,
                   ),
-              ],
+                ),
+              ),
+            )
+          : null,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Progress Indicator
+                  LinearProgressIndicator(
+                    value: (_currentIndex + 1) / _allEntries.length,
+                    borderRadius: BorderRadius.circular(8),
+                    minHeight: 8,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Question ${_currentIndex + 1} of ${_allEntries.length}',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Question Title
+                  const Text(
+                    'What is shown in this picture?',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // HD Picture Card
+                  Expanded(
+                    flex: 5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        color: Colors.black12,
+                        child: PictureCardImage(
+                          imageUrl: currentEntry.imageUrl,
+                          fit: BoxFit.cover,
+                          word: currentEntry.word,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Meaning Clue
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline, size: 18, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Clue [${currentEntry.partOfSpeech}]: ${currentEntry.englishMeaning}',
+                            style: const TextStyle(fontSize: 12.5),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 4 Multiple Choice Options
+                  Expanded(
+                    flex: 4,
+                    child: GridView.count(
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 2.7,
+                      children: _currentOptions.map((opt) {
+                        final isCorrect = opt == currentEntry.word;
+                        final isSelected = opt == _selectedOption;
+
+                        // Visual styling with high contrast in both light and dark themes
+                        Color btnColor = theme.colorScheme.surfaceContainerHigh;
+                        Color textColor = theme.colorScheme.onSurface;
+                        BorderSide border = BorderSide(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                          width: 1.5,
+                        );
+
+                        if (_hasAnswered) {
+                          if (isCorrect) {
+                            btnColor = Colors.green.shade700;
+                            textColor = Colors.white;
+                            border = const BorderSide(color: Colors.lightGreenAccent, width: 2);
+                          } else if (isSelected) {
+                            btnColor = Colors.red.shade700;
+                            textColor = Colors.white;
+                            border = const BorderSide(color: Colors.redAccent, width: 2);
+                          } else {
+                            // Non-selected distractor after answering
+                            textColor = theme.colorScheme.onSurface.withValues(alpha: 0.6);
+                          }
+                        }
+
+                        return OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: btnColor,
+                            foregroundColor: textColor,
+                            side: border,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: () {
+                            if (!_hasAnswered) {
+                              _handleOptionSelected(opt);
+                            }
+                          },
+                          child: Text(
+                            opt,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: textColor,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -162,6 +162,18 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Future<void> _openSettings() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    if (result == true) {
+      _searchController.clear();
+      _selectedCategory = 'All';
+      await _loadData();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -172,30 +184,32 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        titleSpacing: 12,
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.asset(
                 'assets/images/app_logo.png',
-                width: 34,
-                height: 34,
+                width: 32,
+                height: 32,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.image_search_rounded, color: theme.colorScheme.primary, size: 24),
+                  child: Icon(Icons.image_search_rounded, color: theme.colorScheme.primary, size: 22),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
+            const SizedBox(width: 8),
+            Flexible(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isNarrow = MediaQuery.of(context).size.width < 450;
+                  final isNarrow = MediaQuery.of(context).size.width < 500;
                   return Text(
                     isNarrow ? 'USE Picture Dict' : 'USE Advance Picture Dictionary',
                     style: TextStyle(
@@ -217,16 +231,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 return const SizedBox.shrink();
               }
               return Container(
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
                 child: TextButton.icon(
                   style: TextButton.styleFrom(
                     backgroundColor: const Color(0xFFFFB703),
                     foregroundColor: const Color(0xFF0D1B2A),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  icon: const Icon(Icons.workspace_premium_rounded, size: 16),
-                  label: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  icon: const Icon(Icons.workspace_premium_rounded, size: 15),
+                  label: const Text('PRO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
                   onPressed: () => ProPaywallSheet.show(context),
                 ),
               );
@@ -234,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             tooltip: 'Favourites',
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
             onPressed: () {
               Navigator.push(
@@ -243,17 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
-            tooltip: 'Search & View History',
-            icon: const Icon(Icons.history_rounded),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const HistoryScreen()),
-              );
-            },
-          ),
-          IconButton(
             tooltip: 'Visual Vocabulary Quiz',
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.quiz_outlined),
             onPressed: () {
               Navigator.push(
@@ -262,28 +270,82 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          IconButton(
-            tooltip: 'Open Companion App (USE Advance Dictionary)',
-            icon: const Icon(Icons.menu_book_rounded),
-            onPressed: () {
-              InterlinkService.instance.openInAdvanceDictionary(context, 'dictionary');
-            },
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.settings_rounded),
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-              if (result == true) {
-                _searchController.clear();
-                _selectedCategory = 'All';
-                await _loadData();
-              }
-            },
-          ),
+          if (MediaQuery.of(context).size.width >= 550) ...[
+            IconButton(
+              tooltip: 'Search & View History',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.history_rounded),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                );
+              },
+            ),
+            IconButton(
+              tooltip: 'Open Companion App (USE Advance Dictionary)',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.menu_book_rounded),
+              onPressed: () {
+                InterlinkService.instance.openInAdvanceDictionary(context, 'dictionary');
+              },
+            ),
+            IconButton(
+              tooltip: 'Settings',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.settings_rounded),
+              onPressed: () => _openSettings(),
+            ),
+          ] else ...[
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'More options',
+              onSelected: (value) async {
+                if (value == 'history') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                  );
+                } else if (value == 'companion') {
+                  InterlinkService.instance.openInAdvanceDictionary(context, 'dictionary');
+                } else if (value == 'settings') {
+                  _openSettings();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'history',
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('Search History'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'companion',
+                  child: Row(
+                    children: [
+                      Icon(Icons.menu_book_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('Companion App'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('Settings'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
       body: Container(
