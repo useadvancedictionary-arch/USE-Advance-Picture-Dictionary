@@ -118,7 +118,7 @@ msix_config:
   display_name: USE Advance Picture Dictionary
   publisher_display_name: Badruddin Siddiqui
   identity_name: com.useadvance.useadvancepicturedictionaryapp
-  msix_version: 1.0.0.0
+  msix_version: 1.0.2.0
   logo_path: assets/images/app_icon.png
   protocol_activations:
     - useadvancepicdict

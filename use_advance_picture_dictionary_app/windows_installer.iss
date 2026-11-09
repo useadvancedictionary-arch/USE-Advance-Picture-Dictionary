@@ -1,5 +1,5 @@
 #define MyAppName "USE Advance Picture Dictionary"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "Badruddin Siddiqui"
 #define MyAppExeName "use_advance_picture_dictionary_app.exe"
 #define MySourceDir "build\windows\x64\runner\Release"
@@ -27,7 +27,7 @@ Name: english; MessagesFile: compiler:Default.isl
 Name: desktopicon; Description: {cm:CreateDesktopIcon}; GroupDescription: {cm:AdditionalIcons}; Flags: unchecked
 
 [Files]
-Source: {#MySourceDir}\*; DestDir: {app}; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: {#MySourceDir}\*; DestDir: {app}; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".dart_tool, .dart_tool\*, *.msix, *.log, *.lib, *.exp"
 
 [Icons]
 Name: {group}\{#MyAppName}; Filename: {app}\{#MyAppExeName}
