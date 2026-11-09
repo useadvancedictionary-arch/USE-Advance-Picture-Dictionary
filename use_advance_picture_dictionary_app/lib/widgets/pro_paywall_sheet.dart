@@ -26,7 +26,7 @@ class _ProPaywallSheetState extends State<ProPaywallSheet> {
   @override
   Widget build(BuildContext context) {
     final proProduct = BillingService.instance.proProduct;
-    final priceString = proProduct?.price ?? '\$4.99';
+    final priceString = proProduct?.price ?? '\$6.99';
 
     return Container(
       decoration: const BoxDecoration(
