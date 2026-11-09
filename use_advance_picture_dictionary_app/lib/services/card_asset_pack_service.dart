@@ -62,9 +62,12 @@ class CardAssetPackService {
           return bytes;
         }
 
-        // Try project-relative paths
+        // Try project-relative and exe-relative paths
         final filename = clean.split(RegExp(r'[/\\]')).last;
+        final exeDir = File(Platform.resolvedExecutable).parent.path;
         final projectCandidates = [
+          '$exeDir/data/flutter_assets/assets/cards/$filename',
+          '$exeDir/assets/cards/$filename',
           'D:/USE_Advance_Picture_Dictionary/use_advance_picture_dictionary_app/assets/cards/$filename',
           'assets/cards/$filename',
           clean,
@@ -109,8 +112,16 @@ class CardAssetPackService {
     // On other platforms, check file existence
     if (!kIsWeb) {
       final filename = path.split(RegExp(r'[/\\]')).last;
-      final f = File('D:/USE_Advance_Picture_Dictionary/use_advance_picture_dictionary_app/assets/cards/$filename');
-      if (f.existsSync()) return true;
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final checkPaths = [
+        '$exeDir/data/flutter_assets/assets/cards/$filename',
+        '$exeDir/assets/cards/$filename',
+        'D:/USE_Advance_Picture_Dictionary/use_advance_picture_dictionary_app/assets/cards/$filename',
+        'assets/cards/$filename',
+      ];
+      for (final p in checkPaths) {
+        if (File(p).existsSync()) return true;
+      }
     }
 
     try {
