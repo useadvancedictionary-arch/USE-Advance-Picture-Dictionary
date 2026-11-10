@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
@@ -37,13 +38,41 @@ class PictureDatabaseService {
   }
 
   Future<Database> _initDB(String filePath) async {
+    String path;
     if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-    }
 
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+      final appSupportDir = await getApplicationSupportDirectory();
+      final targetFile = File(join(appSupportDir.path, filePath));
+
+      if (!targetFile.existsSync()) {
+        final legacyPaths = [
+          join(Directory.current.path, '.dart_tool', 'sqflite_common_ffi', 'databases', filePath),
+          r'D:\USE_Advance_Picture_Dictionary\Release_Builds_v1.0.3\Windows_Portable\.dart_tool\sqflite_common_ffi\databases\' + filePath,
+          r'D:\USE_Advance_Picture_Dictionary\use_advance_picture_dictionary_app\build\windows\x64\runner\Release\.dart_tool\sqflite_common_ffi\databases\' + filePath,
+        ];
+        for (final leg in legacyPaths) {
+          final legFile = File(leg);
+          if (legFile.existsSync()) {
+            try {
+              if (!targetFile.parent.existsSync()) {
+                await targetFile.parent.create(recursive: true);
+              }
+              await legFile.copy(targetFile.path);
+              debugPrint('Migrated existing SQLite DB from $leg to ${targetFile.path}');
+              break;
+            } catch (e) {
+              debugPrint('DB migration error: $e');
+            }
+          }
+        }
+      }
+      path = targetFile.path;
+    } else {
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, filePath);
+    }
 
     final db = await openDatabase(
       path,

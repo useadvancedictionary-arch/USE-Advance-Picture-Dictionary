@@ -9,8 +9,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 import '../services/grid_image_splitter_service.dart';
 import '../services/picture_database_service.dart';
 import '../services/firestore_sync_service.dart';
-import '../models/picture_word_entry.dart';
-import '../services/cloud_image_service.dart';
 import '../services/windows_card_ocr_service.dart';
 import 'picture_word_detail_screen.dart';
 
@@ -517,65 +515,32 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
         wordToMeaningMap: wordToMeaningMap,
       );
 
-      // ── AWAITED cloud upload: upload each cropped image to Firebase Storage,
-      // then push cloud URLs to Firestore so ALL devices receive the pictures. ──
+      // ── Cloud sync: push each cropped picture card directly to Cloud Firestore
+      // with embedded base64 image data so ALL devices receive the picture. ──
       int uploaded = 0;
       int uploadFailed = 0;
       final int uploadTotal = wordToPathMap.length;
       try {
-        final entriesToSync = <PictureWordEntry>[];
         int idx = 0;
         for (final word in wordToPathMap.keys) {
           idx++;
           if (mounted) {
             setState(() {
               _statusMessage =
-                  'Uploading picture $idx of $uploadTotal to cloud: "$word"...';
+                  'Syncing picture $idx of $uploadTotal to cloud: "$word"...';
             });
           }
           final entry = await PictureDatabaseService.instance.getEntryByWord(word);
           if (entry != null) {
-            var syncedEntry = entry;
-            // Upload local Windows file to Firebase Storage so Android / other
-            // devices receive a universally accessible https:// URL.
-            final localFile = File(entry.imageUrl);
-            if (await localFile.exists()) {
-              final cloudUrl = await CloudImageService.instance.uploadLocalFile(
-                localFile,
-                word: word,
-              );
-              if (cloudUrl != null && cloudUrl.isNotEmpty) {
-                syncedEntry = entry.copyWith(
-                  imageUrl: cloudUrl,
-                  thumbnailUrl: cloudUrl,
-                );
-                // Persist the cloud URL in local SQLite so Windows also uses it
-                await PictureDatabaseService.instance.insertOrUpdateEntry(syncedEntry);
-                uploaded++;
-                debugPrint('Cloud upload OK [$uploaded/$uploadTotal]: $word -> $cloudUrl');
-              } else {
-                uploadFailed++;
-                debugPrint('Cloud upload failed for "$word" – local path kept.');
-              }
-            } else {
-              // File is already a cloud/assets URL – no upload needed
+            final ok = await FirestoreSyncService.instance.pushPictureEntry(entry);
+            if (ok) {
               uploaded++;
+              debugPrint('Cloud sync OK [$uploaded/$uploadTotal]: $word');
+            } else {
+              uploadFailed++;
+              debugPrint('Cloud sync failed for "$word"');
             }
-            entriesToSync.add(syncedEntry);
           }
-        }
-
-        if (entriesToSync.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              _statusMessage =
-                  'Syncing $uploadTotal entries to Firestore for all devices...';
-            });
-          }
-          await FirestoreSyncService.instance.pushBatchPictureEntries(entriesToSync);
-          debugPrint(
-              'Batch synced ${entriesToSync.length} entries to Firestore '
-              '(uploaded: $uploaded, failed: $uploadFailed)');
         }
       } catch (e) {
         debugPrint('Error uploading/syncing batch import: $e');

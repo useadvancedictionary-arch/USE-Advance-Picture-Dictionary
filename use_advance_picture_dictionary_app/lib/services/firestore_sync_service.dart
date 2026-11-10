@@ -8,7 +8,6 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/picture_word_entry.dart';
-import 'cloud_image_service.dart';
 import 'picture_database_service.dart';
 
 /// Result object for sync operations.
@@ -41,18 +40,107 @@ class FirestoreSyncService {
 
   static bool get firebaseReady => Firebase.apps.isNotEmpty;
   String? lastAuthError;
+  static const String _kFirestoreProjectId = 'use-advance-picture-dict-1861e';
 
   /// Ensure the user is signed in (anonymous is fine for reads and writes under open rules).
+  /// On Windows, bypasses Firebase Auth since FlutterFire lacks a Windows auth plugin
+  /// and Firestore rules allow open access. Never blocks or hangs.
   Future<bool> _ensureSignedIn() async {
+    if (Platform.isWindows) return true;
     if (FirebaseAuth.instance.currentUser != null) return true;
     try {
-      await FirebaseAuth.instance.signInAnonymously();
+      await FirebaseAuth.instance.signInAnonymously().timeout(const Duration(seconds: 4));
       lastAuthError = null;
       return true;
     } catch (e) {
       lastAuthError = e.toString();
       debugPrint('FirestoreSyncService auth error: $e');
+      return true; // Still allow sync because Firestore has open rules
+    }
+  }
+
+  /// Convert a local raw Map to Firestore REST API JSON format.
+  Map<String, dynamic> _toFirestoreRestPayload(Map<String, dynamic> map) {
+    final fields = <String, dynamic>{};
+    map.forEach((key, value) {
+      if (value == null) {
+        fields[key] = {'nullValue': null};
+      } else if (value is bool) {
+        fields[key] = {'booleanValue': value};
+      } else if (value is int) {
+        fields[key] = {'integerValue': value.toString()};
+      } else if (value is double) {
+        fields[key] = {'doubleValue': value};
+      } else if (value is String) {
+        fields[key] = {'stringValue': value};
+      } else if (value is List) {
+        fields[key] = {
+          'arrayValue': {
+            'values': value.map((v) => {'stringValue': v.toString()}).toList(),
+          }
+        };
+      }
+    });
+    fields['updatedAt'] = {'timestampValue': DateTime.now().toUtc().toIso8601String()};
+    return {'fields': fields};
+  }
+
+  /// Push a document to Firestore using the standard HTTP REST API.
+  /// Works universally on all platforms including Windows without native plugins.
+  Future<bool> _pushToFirestoreRest(String docId, Map<String, dynamic> data) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final url = 'https://firestore.googleapis.com/v1/projects/$_kFirestoreProjectId/databases/(default)/documents/$kFirestorePictureEntriesCollection/$docId';
+      final req = await client.patchUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      req.headers.set('Content-Type', 'application/json');
+      final payload = _toFirestoreRestPayload(data);
+      req.add(utf8.encode(jsonEncode(payload)));
+      final res = await req.close().timeout(const Duration(seconds: 10));
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } catch (e) {
+      debugPrint('_pushToFirestoreRest error for $docId: $e');
       return false;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Reads local image file into base64 string if it exists on disk.
+  String? _getLocalImageBase64(String? path) {
+    if (path == null || path.trim().isEmpty) return null;
+    try {
+      final file = File(path.trim());
+      if (file.existsSync()) {
+        final bytes = file.readAsBytesSync();
+        if (bytes.isNotEmpty) {
+          return base64Encode(bytes);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error reading image bytes from $path: $e');
+    }
+    return null;
+  }
+
+  /// Saves a base64 image string to the device's local app storage directory.
+  /// Returns the saved File, or null if decoding fails.
+  Future<File?> _saveBase64ImageLocally(String word, String base64Str) async {
+    try {
+      final bytes = base64Decode(base64Str);
+      if (bytes.isEmpty) return null;
+      final appDir = await getApplicationDocumentsDirectory();
+      final cardsDir = Directory('${appDir.path}/cards');
+      if (!await cardsDir.exists()) {
+        await cardsDir.create(recursive: true);
+      }
+      final sanitized = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+      final file = File('${cardsDir.path}/${sanitized}_card.png');
+      await file.writeAsBytes(bytes, flush: true);
+      return file;
+    } catch (e) {
+      debugPrint('Error saving base64 image locally for $word: $e');
+      return null;
     }
   }
 
@@ -210,78 +298,73 @@ class FirestoreSyncService {
   }
 
   /// Push a single picture entry to Firestore.
-  Future<bool> pushPictureEntry(PictureWordEntry entry) async {
-    if (!firebaseReady) return false;
-    if (!(await _ensureSignedIn())) return false;
+  /// Automatically embeds image bytes as Base64 when the entry points to a local file,
+  /// guaranteeing cloud sync to all devices without requiring Firebase Cloud Storage or a Blaze plan.
+  Future<bool> pushPictureEntry(PictureWordEntry entry, {String? imageBase64}) async {
+    final docId = documentIdForWord(entry.word);
+    final b64 = imageBase64 ?? _getLocalImageBase64(entry.imageUrl);
+    final map = _pictureEntryToFirestoreMap(entry, imageBase64: b64);
+
+    if (Platform.isWindows) {
+      return await _pushToFirestoreRest(docId, map);
+    }
 
     try {
-      final docId = documentIdForWord(entry.word);
       await FirebaseFirestore.instance
           .collection(kFirestorePictureEntriesCollection)
           .doc(docId)
-          .set(
-            _pictureEntryToFirestoreMap(entry),
-            SetOptions(merge: true),
-          );
-      debugPrint('FirestoreSyncService: Pushed "${entry.word}" to Firestore');
+          .set(map, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 5));
+      debugPrint('FirestoreSyncService: Pushed "${entry.word}" to Firestore via SDK');
       return true;
-    } on FirebaseException catch (e) {
-      debugPrint('FirestoreSyncService push error: $e');
-      if (e.code == 'permission-denied') return false;
-      rethrow;
     } catch (e) {
-      debugPrint('FirestoreSyncService push error: $e');
-      return false;
+      debugPrint('FirestoreSyncService SDK push failed ($e), falling back to REST...');
+      return await _pushToFirestoreRest(docId, map);
     }
   }
 
   /// Delete a picture entry in Firestore (marks deleted: true so all clients remove it).
   Future<bool> deletePictureEntry(String word) async {
-    if (!firebaseReady) return false;
-    if (!(await _ensureSignedIn())) return false;
+    final docId = documentIdForWord(word);
+    final map = {
+      'word': word,
+      'deleted': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (Platform.isWindows) {
+      return await _pushToFirestoreRest(docId, {
+        'word': word,
+        'deleted': true,
+      });
+    }
 
     try {
-      final docId = documentIdForWord(word);
       await FirebaseFirestore.instance
           .collection(kFirestorePictureEntriesCollection)
           .doc(docId)
-          .set({
-        'word': word,
-        'deleted': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+          .set(map, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 5));
       debugPrint('FirestoreSyncService: Marked "$word" as deleted in Firestore');
       return true;
     } catch (e) {
-      debugPrint('FirestoreSyncService delete error: $e');
-      return false;
+      return await _pushToFirestoreRest(docId, {
+        'word': word,
+        'deleted': true,
+      });
     }
   }
 
-  /// Push a batch of picture entries in transactions of 400 items.
+  /// Push a batch of picture entries to Firestore.
   Future<int> pushBatchPictureEntries(List<PictureWordEntry> entries) async {
-    if (!firebaseReady || entries.isEmpty) return 0;
-    if (!(await _ensureSignedIn())) return 0;
+    if (entries.isEmpty) return 0;
 
     int totalPushed = 0;
-    const chunkSize = 400;
-    for (int i = 0; i < entries.length; i += chunkSize) {
-      final chunk = entries.sublist(
-        i,
-        (i + chunkSize > entries.length) ? entries.length : i + chunkSize,
-      );
-      final batch = FirebaseFirestore.instance.batch();
-      for (final entry in chunk) {
-        final docId = documentIdForWord(entry.word);
-        final docRef = FirebaseFirestore.instance
-            .collection(kFirestorePictureEntriesCollection)
-            .doc(docId);
-        batch.set(docRef, _pictureEntryToFirestoreMap(entry), SetOptions(merge: true));
-      }
-      await batch.commit();
-      totalPushed += chunk.length;
-      debugPrint('FirestoreSyncService: Batch committed $totalPushed/${entries.length} entries');
+    for (final entry in entries) {
+      final ok = await pushPictureEntry(entry);
+      if (ok) totalPushed++;
     }
+    debugPrint('FirestoreSyncService: Batch pushed $totalPushed/${entries.length} entries');
     return totalPushed;
   }
 
@@ -290,55 +373,94 @@ class FirestoreSyncService {
     int? sinceMs,
     int limit = 500,
   }) async {
-    if (!firebaseReady) return [];
-    if (!(await _ensureSignedIn())) return [];
-
     final results = <Map<String, dynamic>>[];
-    Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
-        .collection(kFirestorePictureEntriesCollection);
 
-    if (sinceMs != null && sinceMs > 0) {
-      ref = ref.where(
-        'updatedAt',
-        isGreaterThan: Timestamp.fromMillisecondsSinceEpoch(sinceMs),
-      );
-    }
-    ref = ref.orderBy('updatedAt').limit(limit);
-
-    DocumentSnapshot<Map<String, dynamic>>? lastDoc;
-
-    while (true) {
-      var currentQuery = ref;
-      if (lastDoc != null) {
-        currentQuery = currentQuery.startAfterDocument(lastDoc);
+    try {
+      if (Platform.isWindows) {
+        // Direct REST query on Windows
+        final client = HttpClient();
+        try {
+          final url = 'https://firestore.googleapis.com/v1/projects/$_kFirestoreProjectId/databases/(default)/documents/$kFirestorePictureEntriesCollection?pageSize=$limit';
+          final req = await client.getUrl(Uri.parse(url));
+          final res = await req.close();
+          if (res.statusCode == 200) {
+            final body = await res.transform(utf8.decoder).join();
+            final json = jsonDecode(body) as Map<String, dynamic>;
+            final docs = json['documents'] as List? ?? [];
+            for (final doc in docs) {
+              final parsed = _fromFirestoreRestDoc(doc as Map<String, dynamic>);
+              results.add(parsed);
+            }
+          }
+        } finally {
+          client.close();
+        }
+        return results;
       }
 
-      final snap = await currentQuery.get();
-      if (snap.docs.isEmpty) break;
-      lastDoc = snap.docs.last;
+      Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
+          .collection(kFirestorePictureEntriesCollection);
 
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        results.add(data);
+      if (sinceMs != null && sinceMs > 0) {
+        ref = ref.where(
+          'updatedAt',
+          isGreaterThan: Timestamp.fromMillisecondsSinceEpoch(sinceMs),
+        );
       }
+      ref = ref.orderBy('updatedAt').limit(limit);
+
+      DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+
+      while (true) {
+        var currentQuery = ref;
+        if (lastDoc != null) {
+          currentQuery = currentQuery.startAfterDocument(lastDoc);
+        }
+
+        final snap = await currentQuery.get();
+        if (snap.docs.isEmpty) break;
+        lastDoc = snap.docs.last;
+
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          results.add(data);
+        }
+      }
+    } catch (e) {
+      debugPrint('pullRawPictureDocuments error: $e');
     }
 
     return results;
   }
 
-  /// Sync picture entries from Firestore into the local SQLite database.
-  /// Handles both additions/updates and deletions, propagating admin edits to all users.
-  Future<SyncResult> syncPictureEntriesToLocal({bool forceFullSync = false}) async {
-    if (!firebaseReady) {
-      return const SyncResult(success: false, message: 'Firebase is not initialized.');
-    }
-    
-    // Attempt authentication, but proceed to test connection if Firestore has open read rules
-    final signedIn = await _ensureSignedIn();
-    if (!signedIn) {
-      debugPrint('FirestoreSyncService: Auth did not succeed ($lastAuthError). Trying Firestore directly...');
-    }
+  /// Parse a Firestore REST document into a flat `Map<String, dynamic>`.
+  Map<String, dynamic> _fromFirestoreRestDoc(Map<String, dynamic> doc) {
+    final out = <String, dynamic>{};
+    final fields = doc['fields'] as Map<String, dynamic>? ?? {};
+    fields.forEach((k, v) {
+      if (v is Map) {
+        if (v.containsKey('stringValue')) {
+          out[k] = v['stringValue'];
+        } else if (v.containsKey('booleanValue')) {
+          out[k] = v['booleanValue'];
+        } else if (v.containsKey('integerValue')) {
+          out[k] = int.tryParse(v['integerValue'].toString()) ?? 0;
+        } else if (v.containsKey('doubleValue')) {
+          out[k] = v['doubleValue'];
+        } else if (v.containsKey('timestampValue')) {
+          out[k] = v['timestampValue'];
+        } else if (v.containsKey('arrayValue')) {
+          final arr = v['arrayValue']['values'] as List? ?? [];
+          out[k] = arr.map((item) => (item as Map)['stringValue'] ?? '').toList();
+        }
+      }
+    });
+    return out;
+  }
 
+  /// Sync picture entries from Firestore into the local SQLite database.
+  /// Handles both additions/updates and deletions, saving base64 images locally on device.
+  Future<SyncResult> syncPictureEntriesToLocal({bool forceFullSync = false}) async {
     try {
       final lastSyncMs = forceFullSync ? null : await getLastSyncTime();
       final startTimestamp = DateTime.now().millisecondsSinceEpoch;
@@ -367,6 +489,16 @@ class FirestoreSyncService {
           await db.deleteEntryByWord(word);
           deletedCount++;
         } else {
+          // If Firestore contains embedded image Base64, save it to local app storage
+          final b64 = data['image_base64']?.toString();
+          if (b64 != null && b64.isNotEmpty) {
+            final localCard = await _saveBase64ImageLocally(word, b64);
+            if (localCard != null) {
+              data['image_url'] = localCard.path;
+              data['thumbnail_url'] = localCard.path;
+            }
+          }
+
           final entry = _firestoreDataToPictureEntry(data);
           await db.insertOrUpdateEntry(entry);
           addedOrUpdated++;
@@ -384,15 +516,18 @@ class FirestoreSyncService {
       );
     } catch (e) {
       debugPrint('FirestoreSyncService sync error: $e');
-      final detail = lastAuthError != null ? '$e [Auth: $lastAuthError]' : '$e';
       return SyncResult(
         success: false,
-        message: 'Sync failed: $detail',
+        message: 'Sync failed: $e',
       );
     }
   }
 
-  Map<String, dynamic> _pictureEntryToFirestoreMap(PictureWordEntry entry) {
+  Map<String, dynamic> _pictureEntryToFirestoreMap(
+    PictureWordEntry entry, {
+    String? imageBase64,
+  }) {
+    final b64 = imageBase64 ?? _getLocalImageBase64(entry.imageUrl);
     return {
       'word': entry.word,
       'part_of_speech': entry.partOfSpeech,
@@ -403,6 +538,7 @@ class FirestoreSyncService {
       'thumbnail_url': entry.thumbnailUrl ?? '',
       'category': entry.category,
       'example_sentence': entry.exampleSentence ?? '',
+      'image_base64': b64 ?? '',
       'deleted': false,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -439,44 +575,27 @@ class FirestoreSyncService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// Scans ALL entries in the local SQLite database that still have a local
-  /// file-system path as their imageUrl (i.e. starts with a drive letter like
-  /// C:\ or /Users/...) instead of a cloud https:// URL.
+  /// file-system path as their imageUrl (e.g. C:\... or /...).
   ///
   /// For every such entry it:
-  ///   1. Uploads the image file to Firebase Cloud Storage.
-  ///   2. Replaces the local path with the returned cloud https:// URL in SQLite.
-  ///   3. Pushes the updated entry to Firestore so ALL devices receive the cloud URL.
+  ///   1. Reads the local image bytes and encodes to Base64.
+  ///   2. Pushes the entry and embedded image directly to Cloud Firestore.
+  ///   3. Syncs to ALL devices (Android, etc.) without requiring Firebase Cloud Storage!
   ///
-  /// Returns a [SyncResult] describing how many were fixed vs failed.
+  /// Returns a [SyncResult] describing how many were uploaded vs failed.
   Future<SyncResult> uploadPendingLocalImages({
     void Function(int done, int total, String word)? onProgress,
   }) async {
-    if (!firebaseReady) {
-      return const SyncResult(
-        success: false,
-        message: 'Firebase is not ready. Check internet connection.',
-      );
-    }
-
-    if (!(await _ensureSignedIn())) {
-      return SyncResult(
-        success: false,
-        message: 'Could not authenticate with Firebase${lastAuthError != null ? ': $lastAuthError' : '.'}',
-      );
-    }
-
     final db = PictureDatabaseService.instance;
     final allEntries = await db.getAllEntries();
 
-    // Filter entries whose imageUrl is a local path (not http/https/assets)
+    // Filter entries whose imageUrl is a local path (starts with drive letter or /)
     final pendingEntries = allEntries.where((e) {
       final url = (e.imageUrl).trim();
       if (url.isEmpty) return false;
       if (url.startsWith('http://') || url.startsWith('https://')) return false;
       if (url.startsWith('assets/')) return false;
-      // Windows absolute path: C:\..., D:\...
       if (RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(url)) return true;
-      // Unix-style absolute path
       if (url.startsWith('/')) return true;
       return false;
     }).toList();
@@ -485,7 +604,7 @@ class FirestoreSyncService {
       return const SyncResult(
         success: true,
         addedOrUpdated: 0,
-        message: 'No pending images found – all pictures are already on the cloud ✓',
+        message: 'No pending local images found – all pictures are already in sync ✓',
       );
     }
 
@@ -493,12 +612,34 @@ class FirestoreSyncService {
     int failed = 0;
     final failedWords = <String>[];
 
+    // Known backup folder on Windows where cropped cards are saved
+    final fallbackDir = Directory(r'C:\Users\Dell\Documents\USE_Advance_Picture_Dictionary\custom_cards');
+
     for (int i = 0; i < pendingEntries.length; i++) {
       final entry = pendingEntries[i];
       onProgress?.call(i + 1, pendingEntries.length, entry.word);
 
-      final localFile = File(entry.imageUrl.trim());
-      if (!await localFile.exists()) {
+      File localFile = File(entry.imageUrl.trim());
+      if (!localFile.existsSync()) {
+        final sanitized = entry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+        final candidate = File('${fallbackDir.path}/${sanitized}_card.png');
+        if (candidate.existsSync()) {
+          localFile = candidate;
+        } else {
+          try {
+            final matches = fallbackDir.listSync().whereType<File>().where((f) {
+              final name = f.uri.pathSegments.last.toLowerCase();
+              return name.startsWith('${sanitized}_card');
+            }).toList();
+            if (matches.isNotEmpty) {
+              matches.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+              localFile = matches.first;
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (!localFile.existsSync()) {
         debugPrint('uploadPendingLocalImages: file not found for "${entry.word}": ${entry.imageUrl}');
         failed++;
         failedWords.add(entry.word);
@@ -506,26 +647,17 @@ class FirestoreSyncService {
       }
 
       try {
-        final cloudUrl = await CloudImageService.instance.uploadLocalFile(
-          localFile,
-          word: entry.word,
-        );
+        final bytes = await localFile.readAsBytes();
+        final b64 = base64Encode(bytes);
+        final ok = await pushPictureEntry(entry, imageBase64: b64);
 
-        if (cloudUrl != null && cloudUrl.isNotEmpty) {
-          final updatedEntry = entry.copyWith(
-            imageUrl: cloudUrl,
-            thumbnailUrl: cloudUrl,
-          );
-          // 1. Update local SQLite
-          await db.insertOrUpdateEntry(updatedEntry);
-          // 2. Push to Firestore
-          await pushPictureEntry(updatedEntry);
+        if (ok) {
           uploaded++;
-          debugPrint('uploadPendingLocalImages [$uploaded/${pendingEntries.length}]: "${entry.word}" -> $cloudUrl');
+          debugPrint('uploadPendingLocalImages [$uploaded/${pendingEntries.length}]: "${entry.word}" uploaded to Firestore ✓');
         } else {
           failed++;
           failedWords.add(entry.word);
-          debugPrint('uploadPendingLocalImages: upload returned null for "${entry.word}"');
+          debugPrint('uploadPendingLocalImages: push failed for "${entry.word}"');
         }
       } catch (e) {
         failed++;
@@ -539,7 +671,7 @@ class FirestoreSyncService {
       return SyncResult(
         success: true,
         addedOrUpdated: uploaded,
-        message: 'All $uploaded pending image(s) uploaded to cloud and synced to all devices ✓',
+        message: 'All $uploaded pictures successfully uploaded to cloud & synced to all devices! ✓',
       );
     } else {
       final failList = failedWords.take(5).join(', ');
@@ -547,7 +679,7 @@ class FirestoreSyncService {
       return SyncResult(
         success: uploaded > 0,
         addedOrUpdated: uploaded,
-        message: 'Uploaded $uploaded of $total. $failed failed (file missing?): $failList$more',
+        message: 'Uploaded $uploaded of $total to cloud. ($failed failed: $failList$more)',
       );
     }
   }
