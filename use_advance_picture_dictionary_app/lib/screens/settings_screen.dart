@@ -454,7 +454,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: status.contains('failed') ? Colors.red : Colors.green.shade700,
+                        color: status.contains('failed') || status.contains('Failed')
+                            ? Colors.red
+                            : status.contains('not uploaded') || status.contains('missing')
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700,
                       ),
                     ),
                   ],
@@ -505,6 +509,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                 ],
+                if (!isSyncing)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.cloud_upload_rounded, size: 16),
+                    label: const Text('Upload Pending Images'),
+                    onPressed: () async {
+                      setDialogState(() {
+                        isSyncing = true;
+                        status = 'Scanning for locally stored images...';
+                      });
+                      final res = await FirestoreSyncService.instance.uploadPendingLocalImages(
+                        onProgress: (done, total, word) {
+                          setDialogState(() {
+                            status = 'Uploading $done of $total: "$word"...';
+                          });
+                        },
+                      );
+                      setDialogState(() {
+                        isSyncing = false;
+                        status = res.message;
+                      });
+                    },
+                  ),
               ],
             );
           },

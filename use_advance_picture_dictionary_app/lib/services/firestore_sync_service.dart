@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/picture_word_entry.dart';
+import 'cloud_image_service.dart';
 import 'picture_database_service.dart';
 
 /// Result object for sync operations.
@@ -431,5 +432,123 @@ class FirestoreSyncService {
       category: data['category']?.toString() ?? 'General',
       exampleSentence: data['example_sentence']?.toString(),
     );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ─── Upload Pending Local Images ─────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Scans ALL entries in the local SQLite database that still have a local
+  /// file-system path as their imageUrl (i.e. starts with a drive letter like
+  /// C:\ or /Users/...) instead of a cloud https:// URL.
+  ///
+  /// For every such entry it:
+  ///   1. Uploads the image file to Firebase Cloud Storage.
+  ///   2. Replaces the local path with the returned cloud https:// URL in SQLite.
+  ///   3. Pushes the updated entry to Firestore so ALL devices receive the cloud URL.
+  ///
+  /// Returns a [SyncResult] describing how many were fixed vs failed.
+  Future<SyncResult> uploadPendingLocalImages({
+    void Function(int done, int total, String word)? onProgress,
+  }) async {
+    if (!firebaseReady) {
+      return const SyncResult(
+        success: false,
+        message: 'Firebase is not ready. Check internet connection.',
+      );
+    }
+
+    if (!(await _ensureSignedIn())) {
+      return SyncResult(
+        success: false,
+        message: 'Could not authenticate with Firebase${lastAuthError != null ? ': $lastAuthError' : '.'}',
+      );
+    }
+
+    final db = PictureDatabaseService.instance;
+    final allEntries = await db.getAllEntries();
+
+    // Filter entries whose imageUrl is a local path (not http/https/assets)
+    final pendingEntries = allEntries.where((e) {
+      final url = (e.imageUrl).trim();
+      if (url.isEmpty) return false;
+      if (url.startsWith('http://') || url.startsWith('https://')) return false;
+      if (url.startsWith('assets/')) return false;
+      // Windows absolute path: C:\..., D:\...
+      if (RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(url)) return true;
+      // Unix-style absolute path
+      if (url.startsWith('/')) return true;
+      return false;
+    }).toList();
+
+    if (pendingEntries.isEmpty) {
+      return const SyncResult(
+        success: true,
+        addedOrUpdated: 0,
+        message: 'No pending images found – all pictures are already on the cloud ✓',
+      );
+    }
+
+    int uploaded = 0;
+    int failed = 0;
+    final failedWords = <String>[];
+
+    for (int i = 0; i < pendingEntries.length; i++) {
+      final entry = pendingEntries[i];
+      onProgress?.call(i + 1, pendingEntries.length, entry.word);
+
+      final localFile = File(entry.imageUrl.trim());
+      if (!await localFile.exists()) {
+        debugPrint('uploadPendingLocalImages: file not found for "${entry.word}": ${entry.imageUrl}');
+        failed++;
+        failedWords.add(entry.word);
+        continue;
+      }
+
+      try {
+        final cloudUrl = await CloudImageService.instance.uploadLocalFile(
+          localFile,
+          word: entry.word,
+        );
+
+        if (cloudUrl != null && cloudUrl.isNotEmpty) {
+          final updatedEntry = entry.copyWith(
+            imageUrl: cloudUrl,
+            thumbnailUrl: cloudUrl,
+          );
+          // 1. Update local SQLite
+          await db.insertOrUpdateEntry(updatedEntry);
+          // 2. Push to Firestore
+          await pushPictureEntry(updatedEntry);
+          uploaded++;
+          debugPrint('uploadPendingLocalImages [$uploaded/${pendingEntries.length}]: "${entry.word}" -> $cloudUrl');
+        } else {
+          failed++;
+          failedWords.add(entry.word);
+          debugPrint('uploadPendingLocalImages: upload returned null for "${entry.word}"');
+        }
+      } catch (e) {
+        failed++;
+        failedWords.add(entry.word);
+        debugPrint('uploadPendingLocalImages error for "${entry.word}": $e');
+      }
+    }
+
+    final total = pendingEntries.length;
+    if (failed == 0) {
+      return SyncResult(
+        success: true,
+        addedOrUpdated: uploaded,
+        message: 'All $uploaded pending image(s) uploaded to cloud and synced to all devices ✓',
+      );
+    } else {
+      final failList = failedWords.take(5).join(', ');
+      final more = failedWords.length > 5 ? ' …and ${failedWords.length - 5} more' : '';
+      return SyncResult(
+        success: uploaded > 0,
+        addedOrUpdated: uploaded,
+        message: 'Uploaded $uploaded of $total. $failed failed (file missing?): $failList$more',
+      );
+    }
   }
 }

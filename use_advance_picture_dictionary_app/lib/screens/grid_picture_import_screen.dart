@@ -517,46 +517,79 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
         wordToMeaningMap: wordToMeaningMap,
       );
 
-      // Sync imported entries to Cloud Storage and Firestore for all users
-      () async {
-        try {
-          final entriesToSync = <PictureWordEntry>[];
-          for (final word in wordToPathMap.keys) {
-            final entry = await PictureDatabaseService.instance.getEntryByWord(word);
-            if (entry != null) {
-              var syncedEntry = entry;
-              // If the image is a local Windows file, upload to Firebase Storage so Android gets it
-              final localFile = File(entry.imageUrl);
-              if (await localFile.exists()) {
-                final cloudUrl = await CloudImageService.instance.uploadLocalFile(
-                  localFile,
-                  word: word,
+      // ── AWAITED cloud upload: upload each cropped image to Firebase Storage,
+      // then push cloud URLs to Firestore so ALL devices receive the pictures. ──
+      int uploaded = 0;
+      int uploadFailed = 0;
+      final int uploadTotal = wordToPathMap.length;
+      try {
+        final entriesToSync = <PictureWordEntry>[];
+        int idx = 0;
+        for (final word in wordToPathMap.keys) {
+          idx++;
+          if (mounted) {
+            setState(() {
+              _statusMessage =
+                  'Uploading picture $idx of $uploadTotal to cloud: "$word"...';
+            });
+          }
+          final entry = await PictureDatabaseService.instance.getEntryByWord(word);
+          if (entry != null) {
+            var syncedEntry = entry;
+            // Upload local Windows file to Firebase Storage so Android / other
+            // devices receive a universally accessible https:// URL.
+            final localFile = File(entry.imageUrl);
+            if (await localFile.exists()) {
+              final cloudUrl = await CloudImageService.instance.uploadLocalFile(
+                localFile,
+                word: word,
+              );
+              if (cloudUrl != null && cloudUrl.isNotEmpty) {
+                syncedEntry = entry.copyWith(
+                  imageUrl: cloudUrl,
+                  thumbnailUrl: cloudUrl,
                 );
-                if (cloudUrl != null && cloudUrl.isNotEmpty) {
-                  syncedEntry = entry.copyWith(
-                    imageUrl: cloudUrl,
-                    thumbnailUrl: cloudUrl,
-                  );
-                  // Update local SQLite as well
-                  await PictureDatabaseService.instance.insertOrUpdateEntry(syncedEntry);
-                }
+                // Persist the cloud URL in local SQLite so Windows also uses it
+                await PictureDatabaseService.instance.insertOrUpdateEntry(syncedEntry);
+                uploaded++;
+                debugPrint('Cloud upload OK [$uploaded/$uploadTotal]: $word -> $cloudUrl');
+              } else {
+                uploadFailed++;
+                debugPrint('Cloud upload failed for "$word" – local path kept.');
               }
-              entriesToSync.add(syncedEntry);
+            } else {
+              // File is already a cloud/assets URL – no upload needed
+              uploaded++;
             }
+            entriesToSync.add(syncedEntry);
           }
-          if (entriesToSync.isNotEmpty) {
-            await FirestoreSyncService.instance.pushBatchPictureEntries(entriesToSync);
-            debugPrint('Batch import uploaded & synced ${entriesToSync.length} entries to Firestore');
-          }
-        } catch (e) {
-          debugPrint('Error syncing batch import to Firestore: $e');
         }
-      }();
+
+        if (entriesToSync.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _statusMessage =
+                  'Syncing $uploadTotal entries to Firestore for all devices...';
+            });
+          }
+          await FirestoreSyncService.instance.pushBatchPictureEntries(entriesToSync);
+          debugPrint(
+              'Batch synced ${entriesToSync.length} entries to Firestore '
+              '(uploaded: $uploaded, failed: $uploadFailed)');
+        }
+      } catch (e) {
+        debugPrint('Error uploading/syncing batch import: $e');
+        uploadFailed++;
+      }
 
       if (mounted) {
         setState(() {
           _isSaving = false;
-          _statusMessage = 'Done! Updated ${result.updatedExisting} existing words and added ${result.newlyCreated} entries.';
+          final cloudNote = uploadFailed > 0
+              ? ' ($uploadFailed image(s) could not upload to cloud – they will appear on Android after you tap "Upload Pending Images" in Cloud Sync.)'
+              : ' All pictures uploaded to cloud ✓';
+          _statusMessage =
+              'Done! Updated ${result.updatedExisting} existing words and added ${result.newlyCreated} entries.$cloudNote';
         });
 
         showDialog(
@@ -583,6 +616,29 @@ class _GridPictureImportScreenState extends State<GridPictureImportScreen> {
                 Text('• New entries added: ${result.newlyCreated}'),
                 const Text('• Duplicate entries created: 0 (Guaranteed)'),
                 const Text('• Other words & definitions: 100% Intact'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      uploadFailed == 0 ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                      size: 16,
+                      color: uploadFailed == 0 ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        uploadFailed == 0
+                            ? 'Pictures uploaded to cloud – visible on all devices ✓'
+                            : '$uploadFailed picture(s) not uploaded. Use "Upload Pending Images" in Cloud Sync to retry.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: uploadFailed == 0 ? Colors.green.shade700 : Colors.orange.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Updated Words:',
