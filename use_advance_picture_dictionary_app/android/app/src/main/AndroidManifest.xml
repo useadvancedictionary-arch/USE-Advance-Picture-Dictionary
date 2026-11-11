@@ -5,7 +5,8 @@
     <application
         android:label="USE Advance Picture Dictionary"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true">
 
         <!-- Google AdMob Application ID -->
         <meta-data

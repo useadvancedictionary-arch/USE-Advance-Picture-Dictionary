@@ -459,49 +459,119 @@ class FirestoreSyncService {
   }
 
   /// Sync picture entries from Firestore into the local SQLite database.
-  /// Handles both additions/updates and deletions, saving base64 images locally on device.
-  Future<SyncResult> syncPictureEntriesToLocal({bool forceFullSync = false}) async {
+  /// Uses a memory-safe streaming batch size (15 documents per page) to prevent
+  /// OutOfMemory on mobile devices when downloading embedded base64 card images.
+  Future<SyncResult> syncPictureEntriesToLocal({
+    bool forceFullSync = false,
+    void Function(int count, String currentWord)? onProgress,
+  }) async {
     try {
       final lastSyncMs = forceFullSync ? null : await getLastSyncTime();
       final startTimestamp = DateTime.now().millisecondsSinceEpoch;
-
-      final docs = await pullRawPictureDocuments(sinceMs: lastSyncMs);
-      if (docs.isEmpty) {
-        await _saveLastSyncTime(startTimestamp);
-        return const SyncResult(
-          success: true,
-          addedOrUpdated: 0,
-          deleted: 0,
-          message: 'Already up to date with cloud.',
-        );
-      }
-
       final db = PictureDatabaseService.instance;
+
       int addedOrUpdated = 0;
       int deletedCount = 0;
+      const int batchPageSize = 15;
 
-      for (final data in docs) {
-        final word = data['word']?.toString() ?? '';
-        if (word.trim().isEmpty) continue;
-
-        final isDeleted = data['deleted'] == true;
-        if (isDeleted) {
-          await db.deleteEntryByWord(word);
-          deletedCount++;
-        } else {
-          // If Firestore contains embedded image Base64, save it to local app storage
-          final b64 = data['image_base64']?.toString();
-          if (b64 != null && b64.isNotEmpty) {
-            final localCard = await _saveBase64ImageLocally(word, b64);
-            if (localCard != null) {
-              data['image_url'] = localCard.path;
-              data['thumbnail_url'] = localCard.path;
+      if (Platform.isWindows) {
+        // Direct REST query on Windows
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 10);
+        try {
+          String? pageToken;
+          do {
+            var url = 'https://firestore.googleapis.com/v1/projects/$_kFirestoreProjectId/databases/(default)/documents/$kFirestorePictureEntriesCollection?pageSize=$batchPageSize';
+            if (pageToken != null && pageToken.isNotEmpty) {
+              url += '&pageToken=$pageToken';
             }
+            final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 15));
+            final res = await req.close().timeout(const Duration(seconds: 15));
+            if (res.statusCode == 200) {
+              final body = await res.transform(utf8.decoder).join();
+              final json = jsonDecode(body) as Map<String, dynamic>;
+              pageToken = json['nextPageToken']?.toString();
+              final docs = json['documents'] as List? ?? [];
+              for (final rawDoc in docs) {
+                final data = _fromFirestoreRestDoc(rawDoc as Map<String, dynamic>);
+                final word = data['word']?.toString() ?? '';
+                if (word.trim().isEmpty) continue;
+                if (data['deleted'] == true) {
+                  await db.deleteEntryByWord(word);
+                  deletedCount++;
+                } else {
+                  final b64 = data['image_base64']?.toString();
+                  if (b64 != null && b64.isNotEmpty) {
+                    final localCard = await _saveBase64ImageLocally(word, b64);
+                    if (localCard != null) {
+                      data['image_url'] = localCard.path;
+                      data['thumbnail_url'] = localCard.path;
+                    }
+                  }
+                  data.remove('image_base64');
+                  final entry = _firestoreDataToPictureEntry(data);
+                  await db.insertOrUpdateEntry(entry);
+                  addedOrUpdated++;
+                  onProgress?.call(addedOrUpdated, word);
+                }
+              }
+            } else {
+              break;
+            }
+          } while (pageToken != null && pageToken.isNotEmpty);
+        } finally {
+          client.close();
+        }
+      } else {
+        // Mobile / Android / iOS via Firestore SDK with small streaming batches
+        Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
+            .collection(kFirestorePictureEntriesCollection);
+
+        if (lastSyncMs != null && lastSyncMs > 0) {
+          ref = ref.where(
+            'updatedAt',
+            isGreaterThan: Timestamp.fromMillisecondsSinceEpoch(lastSyncMs),
+          );
+        }
+        ref = ref.orderBy('updatedAt').limit(batchPageSize);
+
+        DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+
+        while (true) {
+          var currentQuery = ref;
+          if (lastDoc != null) {
+            currentQuery = currentQuery.startAfterDocument(lastDoc);
           }
 
-          final entry = _firestoreDataToPictureEntry(data);
-          await db.insertOrUpdateEntry(entry);
-          addedOrUpdated++;
+          final snap = await currentQuery.get().timeout(const Duration(seconds: 25));
+          if (snap.docs.isEmpty) break;
+          lastDoc = snap.docs.last;
+
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final word = data['word']?.toString() ?? '';
+            if (word.trim().isEmpty) continue;
+
+            final isDeleted = data['deleted'] == true;
+            if (isDeleted) {
+              await db.deleteEntryByWord(word);
+              deletedCount++;
+            } else {
+              final b64 = data['image_base64']?.toString();
+              if (b64 != null && b64.isNotEmpty) {
+                final localCard = await _saveBase64ImageLocally(word, b64);
+                if (localCard != null) {
+                  data['image_url'] = localCard.path;
+                  data['thumbnail_url'] = localCard.path;
+                }
+              }
+              data.remove('image_base64');
+              final entry = _firestoreDataToPictureEntry(data);
+              await db.insertOrUpdateEntry(entry);
+              addedOrUpdated++;
+              onProgress?.call(addedOrUpdated, word);
+            }
+          }
         }
       }
 

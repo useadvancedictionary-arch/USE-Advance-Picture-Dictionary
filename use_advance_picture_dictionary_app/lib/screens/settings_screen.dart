@@ -482,7 +482,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         isSyncing = true;
                         status = 'Performing full sync with cloud...';
                       });
-                      final res = await FirestoreSyncService.instance.syncPictureEntriesToLocal(forceFullSync: true);
+                      final res = await FirestoreSyncService.instance.syncPictureEntriesToLocal(
+                        forceFullSync: true,
+                        onProgress: (count, word) {
+                          setDialogState(() {
+                            status = 'Syncing $count pictures: "$word"...';
+                          });
+                        },
+                      );
                       setDialogState(() {
                         isSyncing = false;
                         status = res.message;
@@ -501,7 +508,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         isSyncing = true;
                         status = 'Checking cloud for updates...';
                       });
-                      final res = await FirestoreSyncService.instance.syncPictureEntriesToLocal();
+                      final res = await FirestoreSyncService.instance.syncPictureEntriesToLocal(
+                        onProgress: (count, word) {
+                          setDialogState(() {
+                            status = 'Syncing $count pictures: "$word"...';
+                          });
+                        },
+                      );
                       setDialogState(() {
                         isSyncing = false;
                         status = res.message;
