@@ -21,12 +21,34 @@ class MainActivity : FlutterActivity() {
                     val rawPath = call.argument<String>("path")
                     if (rawPath != null) {
                         try {
-                            // Strip leading "assets/" if present
-                            val cleanPath = rawPath.removePrefix("assets/")
-                            val inputStream: InputStream = context.assets.open(cleanPath)
-                            val bytes = inputStream.readBytes()
-                            inputStream.close()
-                            result.success(bytes)
+                            // Strip leading prefixes
+                            var cleanPath = rawPath.replace("\\", "/").trim()
+                            cleanPath = cleanPath.removePrefix("file://").removePrefix("/")
+                            cleanPath = cleanPath.removePrefix("assets/").removePrefix("/")
+
+                            val candidatePaths = mutableListOf(cleanPath)
+                            val filename = cleanPath.substringAfterLast('/')
+                            if (filename.isNotEmpty()) {
+                                candidatePaths.add("cards/$filename")
+                                candidatePaths.add("flutter_assets/assets/cards/$filename")
+                            }
+
+                            var bytes: ByteArray? = null
+                            for (p in candidatePaths) {
+                                try {
+                                    val inputStream: InputStream = context.assets.open(p)
+                                    bytes = inputStream.readBytes()
+                                    inputStream.close()
+                                    if (bytes != null && bytes.isNotEmpty()) break
+                                } catch (_: Exception) {
+                                }
+                            }
+
+                            if (bytes != null && bytes.isNotEmpty()) {
+                                result.success(bytes)
+                            } else {
+                                result.error("NOT_FOUND", "Asset not found: $rawPath", null)
+                            }
                         } catch (e: Exception) {
                             result.error("NOT_FOUND", "Asset not found: $rawPath (${e.message})", null)
                         }
@@ -38,10 +60,21 @@ class MainActivity : FlutterActivity() {
                     val rawPath = call.argument<String>("path")
                     if (rawPath != null) {
                         try {
-                            val cleanPath = rawPath.removePrefix("assets/")
-                            val inputStream = context.assets.open(cleanPath)
-                            inputStream.close()
-                            result.success(true)
+                            var cleanPath = rawPath.replace("\\", "/").trim()
+                            cleanPath = cleanPath.removePrefix("file://").removePrefix("/")
+                            cleanPath = cleanPath.removePrefix("assets/").removePrefix("/")
+                            val candidatePaths = listOf(cleanPath, "cards/${cleanPath.substringAfterLast('/')}")
+                            var found = false
+                            for (p in candidatePaths) {
+                                try {
+                                    val inputStream = context.assets.open(p)
+                                    inputStream.close()
+                                    found = true
+                                    break
+                                } catch (_: Exception) {
+                                }
+                            }
+                            result.success(found)
                         } catch (e: Exception) {
                             result.success(false)
                         }

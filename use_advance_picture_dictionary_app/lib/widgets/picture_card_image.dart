@@ -160,13 +160,16 @@ class PictureCardImage extends StatelessWidget {
     if (!kIsWeb && Platform.isAndroid) {
       // If a local file directly exists on this Android device filesystem, load it
       if (cleanUrl.startsWith('/') && File(cleanUrl).existsSync()) {
-        return Image.file(
-          File(cleanUrl),
-          fit: fit,
-          width: width,
-          height: height,
-          errorBuilder: (_, _, _) => _buildAndroidAssetPackImage(context, theme, cleanUrl),
-        );
+        final f = File(cleanUrl);
+        if (f.lengthSync() > 500) {
+          return Image.file(
+            f,
+            fit: fit,
+            width: width,
+            height: height,
+            errorBuilder: (_, _, _) => _buildAndroidAssetPackImage(context, theme, cleanUrl),
+          );
+        }
       }
       return _buildAndroidAssetPackImage(context, theme, cleanUrl);
     }

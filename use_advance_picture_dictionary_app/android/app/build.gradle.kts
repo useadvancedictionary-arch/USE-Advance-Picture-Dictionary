@@ -22,6 +22,15 @@ android {
 
     assetPacks += listOf(":cards_pack")
 
+    val isBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+    if (!isBundle) {
+        sourceSets {
+            getByName("main") {
+                assets.srcDirs("../cards_pack/src/main/assets")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

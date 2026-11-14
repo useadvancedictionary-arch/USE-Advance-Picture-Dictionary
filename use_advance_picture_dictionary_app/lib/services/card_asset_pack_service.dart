@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Service to load card images from the Android Play Asset Delivery (PAD) install-time asset pack,
 /// with fallback to local disk files and rootBundle for Desktop/Windows.
@@ -47,6 +48,41 @@ class CardAssetPackService {
 
     final cached = getFromCache(rawPath, word);
     if (cached != null) return cached;
+
+    // Check Android local downloaded cards directory (from Cloud Sync)
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final localCardsDir = Directory('${appDir.path}/cards');
+        if (await localCardsDir.exists()) {
+          final wordsToCheck = <String>[];
+          if (word != null && word.trim().isNotEmpty) {
+            wordsToCheck.add(word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_'));
+          }
+          if (path.isNotEmpty) {
+            final fn = path.split(RegExp(r'[/\\]')).last.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+            wordsToCheck.add(fn);
+            wordsToCheck.add(fn.replaceAll(RegExp(r'_card$'), ''));
+          }
+
+          for (final w in wordsToCheck) {
+            for (final ext in ['png', 'jpg']) {
+              final candidates = [
+                File('${localCardsDir.path}/${w}_card.$ext'),
+                File('${localCardsDir.path}/$w.$ext'),
+              ];
+              for (final f in candidates) {
+                if (await f.exists() && await f.length() > 500) {
+                  final bytes = await f.readAsBytes();
+                  if (path.isNotEmpty) _putInCache(path, bytes);
+                  return bytes;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
     // Build ordered list of candidate paths to check
     final candidates = <String>[];

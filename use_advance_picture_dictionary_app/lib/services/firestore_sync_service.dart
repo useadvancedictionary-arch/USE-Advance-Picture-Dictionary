@@ -89,14 +89,14 @@ class FirestoreSyncService {
   /// Works universally on all platforms including Windows without native plugins.
   Future<bool> _pushToFirestoreRest(String docId, Map<String, dynamic> data) async {
     final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 8);
+    client.connectionTimeout = const Duration(seconds: 25);
     try {
       final url = 'https://firestore.googleapis.com/v1/projects/$_kFirestoreProjectId/databases/(default)/documents/$kFirestorePictureEntriesCollection/$docId';
-      final req = await client.patchUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final req = await client.patchUrl(Uri.parse(url)).timeout(const Duration(seconds: 25));
       req.headers.set('Content-Type', 'application/json');
       final payload = _toFirestoreRestPayload(data);
       req.add(utf8.encode(jsonEncode(payload)));
-      final res = await req.close().timeout(const Duration(seconds: 10));
+      final res = await req.close().timeout(const Duration(seconds: 35));
       return res.statusCode >= 200 && res.statusCode < 300;
     } catch (e) {
       debugPrint('_pushToFirestoreRest error for $docId: $e');
@@ -494,22 +494,27 @@ class FirestoreSyncService {
                 final sanitized = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
                 final localCardFile = File('${cardsDir.path}/${sanitized}_card.png');
 
-                // If image exists on disk already, keep it; otherwise decode from cloud base64
-                if (localCardFile.existsSync()) {
-                  data['image_url'] = localCardFile.path;
-                  data['thumbnail_url'] = localCardFile.path;
-                } else {
-                  final b64 = data['image_base64']?.toString();
-                  if (b64 != null && b64.isNotEmpty) {
-                    try {
-                      final bytes = base64Decode(b64);
+                final b64 = data['image_base64']?.toString();
+                final hasValidCloudB64 = b64 != null && b64.length > 500;
+
+                final fileExists = localCardFile.existsSync();
+                final isCorruptLocal = fileExists && localCardFile.lengthSync() < 500;
+
+                // Decode cloud base64 if local file missing, corrupt, or full resync requested
+                if (hasValidCloudB64 && (!fileExists || isCorruptLocal || forceFullSync)) {
+                  try {
+                    final bytes = base64Decode(b64);
+                    if (bytes.length > 500) {
                       await localCardFile.writeAsBytes(bytes, flush: true);
                       data['image_url'] = localCardFile.path;
                       data['thumbnail_url'] = localCardFile.path;
-                    } catch (e) {
-                      debugPrint('Error writing card file for $word: $e');
                     }
+                  } catch (e) {
+                    debugPrint('Error writing card file for $word: $e');
                   }
+                } else if (fileExists && !isCorruptLocal) {
+                  data['image_url'] = localCardFile.path;
+                  data['thumbnail_url'] = localCardFile.path;
                 }
 
                 data.remove('image_base64');
