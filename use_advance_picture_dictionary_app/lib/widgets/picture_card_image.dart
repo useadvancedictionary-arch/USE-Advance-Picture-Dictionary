@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -150,6 +151,53 @@ class PictureCardImage extends StatelessWidget {
         errorWidget: (context, url, error) {
           // Fall back to local disk / asset pack if network image is unavailable
           return _buildLocalOrAssetPackFallback(context, theme, cleanUrl);
+        },
+      );
+    }
+
+    // 0.1 Base64 Data URL (data:image/...;base64,...)
+    if (cleanUrl.startsWith('data:image')) {
+      try {
+        final commaIdx = cleanUrl.indexOf(',');
+        if (commaIdx != -1) {
+          final bytes = base64Decode(cleanUrl.substring(commaIdx + 1));
+          return Image.memory(
+            bytes,
+            fit: fit,
+            width: width,
+            height: height,
+            errorBuilder: (context, error, stackTrace) => _buildFallback(context, theme),
+          );
+        }
+      } catch (_) {}
+    }
+
+    // 0.2 Web Platform image handling for local/bundled cards
+    if (kIsWeb) {
+      final filename = cleanUrl.split(RegExp(r'[/\\]')).last;
+      return Image.network(
+        'assets/cards/$filename',
+        fit: fit,
+        width: width,
+        height: height,
+        errorBuilder: (context, error, stackTrace) {
+          if (word != null && word!.trim().isNotEmpty) {
+            final safeWord = word!.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+            return Image.network(
+              'assets/cards/$safeWord.png',
+              fit: fit,
+              width: width,
+              height: height,
+              errorBuilder: (c1, e1, s1) => Image.network(
+                'assets/cards/$safeWord.jpg',
+                fit: fit,
+                width: width,
+                height: height,
+                errorBuilder: (c2, e2, s2) => _buildFallback(context, theme),
+              ),
+            );
+          }
+          return _buildFallback(context, theme);
         },
       );
     }

@@ -102,7 +102,7 @@ class InterlinkService {
     // 3. Android Platform Specific Fallback:
     // If the companion app was installed from Google Play before the deep link scheme was registered,
     // launch via direct package intent.
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       try {
         final launched = await _androidChannel.invokeMethod<bool>(
           'launchAndroidCompanion',
@@ -119,7 +119,7 @@ class InterlinkService {
 
     // 4. Windows Platform Specific Fallback:
     // Auto-register protocol in HKCU if USE Advance Dictionary Microsoft Store/Desktop app is installed.
-    if (Platform.isWindows) {
+    if (!kIsWeb && Platform.isWindows) {
       try {
         final registered = await _autoRegisterWindowsProtocol();
         if (registered) {
@@ -138,7 +138,7 @@ class InterlinkService {
     // with an option to also open the Web Dictionary immediately!
     if (!context.mounted) return;
 
-    if (Platform.isWindows) {
+    if (!kIsWeb && Platform.isWindows) {
       _showStoreInstallDialog(
         context: context,
         word: word,
@@ -151,7 +151,7 @@ class InterlinkService {
             Uri.parse('https://apps.microsoft.com/detail/9NLV4X4CVLSM'),
         webFallbackUri: fallbackWebUrl,
       );
-    } else if (Platform.isAndroid) {
+    } else if (!kIsWeb && Platform.isAndroid) {
       _showStoreInstallDialog(
         context: context,
         word: word,
@@ -164,7 +164,7 @@ class InterlinkService {
             'https://play.google.com/store/apps/details?id=com.useadvance.dictionary'),
         webFallbackUri: fallbackWebUrl,
       );
-    } else if (Platform.isIOS || Platform.isMacOS) {
+    } else if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
       _showStoreInstallDialog(
         context: context,
         word: word,
@@ -183,7 +183,7 @@ class InterlinkService {
   }
 
   Future<bool> _autoRegisterWindowsProtocol() async {
-    if (!Platform.isWindows) return false;
+    if (kIsWeb || !Platform.isWindows) return false;
     try {
       const psScript = r'''
 $pkg = Get-AppxPackage | Where-Object { $_.Name -like "*AdvanceDictionary*" }

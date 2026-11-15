@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../widgets/picture_card_image.dart';
 import '../models/picture_word_entry.dart';
@@ -39,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _syncWithCloudInBackground() {
+    if (kIsWeb) return;
     Future.delayed(const Duration(seconds: 2), () async {
       try {
         final result = await FirestoreSyncService.instance.syncPictureEntriesToLocal();

@@ -46,6 +46,7 @@ class FirestoreSyncService {
   /// On Windows, bypasses Firebase Auth since FlutterFire lacks a Windows auth plugin
   /// and Firestore rules allow open access. Never blocks or hangs.
   Future<bool> _ensureSignedIn() async {
+    if (kIsWeb) return true;
     if (Platform.isWindows) return true;
     if (FirebaseAuth.instance.currentUser != null) return true;
     try {
@@ -286,7 +287,7 @@ class FirestoreSyncService {
     final b64 = imageBase64 ?? _getLocalImageBase64(entry.imageUrl);
     final map = _pictureEntryToFirestoreMap(entry, imageBase64: b64);
 
-    if (Platform.isWindows) {
+    if (!kIsWeb && Platform.isWindows) {
       return await _pushToFirestoreRest(docId, map);
     }
 
@@ -313,7 +314,7 @@ class FirestoreSyncService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    if (Platform.isWindows) {
+    if (!kIsWeb && Platform.isWindows) {
       return await _pushToFirestoreRest(docId, {
         'word': word,
         'deleted': true,
@@ -357,7 +358,7 @@ class FirestoreSyncService {
     final results = <Map<String, dynamic>>[];
 
     try {
-      if (Platform.isWindows) {
+      if (!kIsWeb && Platform.isWindows) {
         // Direct REST query on Windows
         final client = HttpClient();
         try {

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/picture_word_entry.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'smart_auto_tagger.dart';
@@ -28,6 +29,65 @@ class PictureUpdateResult {
 class PictureDatabaseService {
   static final PictureDatabaseService instance = PictureDatabaseService._init();
   static Database? _database;
+
+  // ── Web In-Memory Database Store ──
+  static bool _isWebReady = false;
+  static bool _isWebLoading = false;
+  static final List<PictureWordEntry> _webEntries = [];
+  static final Map<String, PictureWordEntry> _webEntriesMap = {};
+  static final List<String> _webCategories = [];
+
+  static const String _kWebFavoritesKey = 'web_user_favorites';
+  static const String _kWebHistoryKey = 'web_user_history';
+
+  Future<void> _ensureWebInitialized() async {
+    if (_isWebReady) return;
+    if (_isWebLoading) {
+      while (_isWebLoading) {
+        await Future.delayed(const Duration(milliseconds: 30));
+      }
+      return;
+    }
+    _isWebLoading = true;
+    try {
+      debugPrint('Initializing Web In-Memory Dictionary Store...');
+      String? jsonStr;
+      try {
+        jsonStr = await rootBundle.loadString('assets/data/picture_entries.json');
+      } catch (e) {
+        debugPrint('Could not load picture_entries.json, trying dictionary.json: $e');
+        jsonStr = await rootBundle.loadString('assets/data/dictionary.json');
+      }
+
+      final list = jsonDecode(jsonStr) as List<dynamic>;
+      _webEntries.clear();
+      _webEntriesMap.clear();
+      final catSet = <String>{};
+
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          final entry = PictureWordEntry.fromMap(item);
+          final norm = normalizeWord(entry.word);
+          if (!_webEntriesMap.containsKey(norm)) {
+            _webEntries.add(entry);
+            _webEntriesMap[norm] = entry;
+            if (entry.category.trim().isNotEmpty) {
+              catSet.add(entry.category.trim());
+            }
+          }
+        }
+      }
+
+      _webCategories.clear();
+      _webCategories.addAll(catSet.toList()..sort());
+      _isWebReady = true;
+      debugPrint('Web In-Memory Store loaded ${_webEntries.length} entries across ${_webCategories.length} categories.');
+    } catch (e) {
+      debugPrint('Web In-Memory Store init error: $e');
+    } finally {
+      _isWebLoading = false;
+    }
+  }
 
   PictureDatabaseService._init();
 
@@ -154,6 +214,18 @@ class PictureDatabaseService {
 
   
   Future<int> insertEntry(PictureWordEntry entry) async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final norm = normalizeWord(entry.word);
+      _webEntries.removeWhere((e) => normalizeWord(e.word) == norm);
+      _webEntries.add(entry);
+      _webEntriesMap[norm] = entry;
+      if (entry.category.trim().isNotEmpty && !_webCategories.contains(entry.category.trim())) {
+        _webCategories.add(entry.category.trim());
+        _webCategories.sort();
+      }
+      return 1;
+    }
     final db = await database;
     return await db.insert(
       'picture_entries',
@@ -163,15 +235,31 @@ class PictureDatabaseService {
   }
 
   Future<int> deleteEntry(int id) async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      _webEntries.removeWhere((e) => e.id == id);
+      _webEntriesMap.removeWhere((k, v) => v.id == id);
+      return 1;
+    }
     final db = await database;
     return await db.delete('picture_entries', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> deleteEntryByWord(String word) async {
-    final db = await database;
     final trimmed = word.trim().toLowerCase();
     final straight = trimmed.replaceAll('‘', "'").replaceAll('’', "'");
     final curly = trimmed.replaceAll("'", '’');
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final norm = normalizeWord(word);
+      _webEntries.removeWhere((e) {
+        final w = e.word.trim().toLowerCase();
+        return w == trimmed || w == straight || w == curly || normalizeWord(w) == norm;
+      });
+      _webEntriesMap.remove(norm);
+      return 1;
+    }
+    final db = await database;
     return await db.delete(
       'picture_entries',
       where: 'LOWER(word) = ? OR LOWER(word) = ? OR LOWER(word) = ?',
@@ -180,6 +268,18 @@ class PictureDatabaseService {
   }
 
   Future<int> updateEntry(PictureWordEntry entry) async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final norm = normalizeWord(entry.word);
+      final idx = _webEntries.indexWhere((e) => normalizeWord(e.word) == norm);
+      if (idx != -1) {
+        _webEntries[idx] = entry;
+      } else {
+        _webEntries.add(entry);
+      }
+      _webEntriesMap[norm] = entry;
+      return 1;
+    }
     if (entry.id == null) return 0;
     final db = await database;
     return await db.update(
@@ -294,6 +394,10 @@ class PictureDatabaseService {
   }
 
   Future<List<PictureWordEntry>> getAllEntries() async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      return List<PictureWordEntry>.from(_webEntries);
+    }
     final db = await database;
     final maps = await db.query('picture_entries', orderBy: 'word ASC');
     final list = maps.map((m) => PictureWordEntry.fromMap(m)).toList();
@@ -302,6 +406,10 @@ class PictureDatabaseService {
 
   /// Returns the lowercase set of the first [limit] words sorted alphabetically
   Future<Set<String>> getFreeWordSet({int limit = 1000}) async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      return _webEntries.take(limit).map((m) => m.word.trim().toLowerCase()).toSet();
+    }
     final db = await database;
     final maps = await db.query(
       'picture_entries',
@@ -313,10 +421,38 @@ class PictureDatabaseService {
   }
 
   Future<List<PictureWordEntry>> searchEntries(String query) async {
-    final db = await database;
     final trimmed = query.trim().toLowerCase();
     if (trimmed.isEmpty) return getAllEntries();
 
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final straight = trimmed.replaceAll('’', "'").replaceAll('‘', "'");
+      final curly = trimmed.replaceAll("'", '’');
+      final matches = _webEntries.where((e) {
+        final w = e.word.toLowerCase();
+        final m = e.englishMeaning.toLowerCase();
+        final c = e.category.toLowerCase();
+        return w.contains(trimmed) || w.contains(straight) || w.contains(curly) ||
+               m.contains(trimmed) || c.contains(trimmed);
+      }).toList();
+
+      matches.sort((a, b) {
+        final aLower = a.word.toLowerCase();
+        final bLower = b.word.toLowerCase();
+        final aExact = aLower == trimmed || aLower == straight;
+        final bExact = bLower == trimmed || bLower == straight;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        final aStarts = aLower.startsWith(trimmed) || aLower.startsWith(straight);
+        final bStarts = bLower.startsWith(trimmed) || bLower.startsWith(straight);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return aLower.compareTo(bLower);
+      });
+      return matches.take(100).toList();
+    }
+
+    final db = await database;
     final straight = trimmed.replaceAll('’', "'").replaceAll('‘', "'");
     final curly = trimmed.replaceAll("'", '’');
 
@@ -373,6 +509,13 @@ class PictureDatabaseService {
   }
 
   Future<List<PictureWordEntry>> getEntriesByCategory(String category) async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      if (category == 'All') return List<PictureWordEntry>.from(_webEntries);
+      return _webEntries
+          .where((e) => e.category.trim().toLowerCase() == category.trim().toLowerCase())
+          .toList();
+    }
     final db = await database;
     final maps = await db.query(
       'picture_entries',
@@ -385,10 +528,18 @@ class PictureDatabaseService {
   }
 
   Future<PictureWordEntry?> getEntryByWord(String word) async {
-    final db = await database;
     final trimmed = word.trim().toLowerCase();
     final straight = trimmed.replaceAll('’', "'").replaceAll('‘', "'");
     final curly = trimmed.replaceAll("'", '’');
+
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      return _webEntriesMap[normalizeWord(trimmed)] ??
+             _webEntriesMap[normalizeWord(straight)] ??
+             _webEntriesMap[normalizeWord(curly)];
+    }
+
+    final db = await database;
     final maps = await db.query(
       'picture_entries',
       where: 'LOWER(word) = ? OR LOWER(word) = ? OR LOWER(word) = ?',
@@ -623,9 +774,21 @@ class PictureDatabaseService {
   }
 
   Future<PictureWordEntry?> getPreviousEntry(String currentWord) async {
+    final clean = currentWord.trim().toLowerCase();
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      PictureWordEntry? prev;
+      for (final e in _webEntries) {
+        if (e.word.toLowerCase().compareTo(clean) < 0) {
+          if (prev == null || e.word.toLowerCase().compareTo(prev.word.toLowerCase()) > 0) {
+            prev = e;
+          }
+        }
+      }
+      return prev;
+    }
     try {
       final db = await database;
-      final clean = currentWord.trim();
       final res = await db.rawQuery('''
         SELECT * FROM picture_entries 
         WHERE LOWER(word) < LOWER(?) 
@@ -642,9 +805,21 @@ class PictureDatabaseService {
   }
 
   Future<PictureWordEntry?> getNextEntry(String currentWord) async {
+    final clean = currentWord.trim().toLowerCase();
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      PictureWordEntry? next;
+      for (final e in _webEntries) {
+        if (e.word.toLowerCase().compareTo(clean) > 0) {
+          if (next == null || e.word.toLowerCase().compareTo(next.word.toLowerCase()) < 0) {
+            next = e;
+          }
+        }
+      }
+      return next;
+    }
     try {
       final db = await database;
-      final clean = currentWord.trim();
       final res = await db.rawQuery('''
         SELECT * FROM picture_entries 
         WHERE LOWER(word) > LOWER(?) 
@@ -661,6 +836,10 @@ class PictureDatabaseService {
   }
 
   Future<List<String>> getAllCategories() async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      return List<String>.from(_webCategories);
+    }
     final db = await database;
     final result = await db.rawQuery('SELECT DISTINCT category FROM picture_entries ORDER BY category ASC');
     return result.map((r) => r['category'] as String).toList();
@@ -1051,6 +1230,15 @@ class PictureDatabaseService {
   Future<void> addFavorite(String word) async {
     final clean = word.trim();
     if (clean.isEmpty) return;
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kWebFavoritesKey) ?? [];
+      if (!list.contains(clean)) {
+        list.add(clean);
+        await prefs.setStringList(_kWebFavoritesKey, list);
+      }
+      return;
+    }
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.rawInsert('''
@@ -1062,6 +1250,13 @@ class PictureDatabaseService {
   Future<void> removeFavorite(String word) async {
     final clean = word.trim();
     if (clean.isEmpty) return;
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kWebFavoritesKey) ?? [];
+      list.removeWhere((w) => w.toLowerCase() == clean.toLowerCase());
+      await prefs.setStringList(_kWebFavoritesKey, list);
+      return;
+    }
     final db = await database;
     await db.delete(
       'favorites',
@@ -1071,17 +1266,49 @@ class PictureDatabaseService {
   }
 
   Future<void> clearAllFavorites() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kWebFavoritesKey);
+      return;
+    }
     final db = await database;
     await db.delete('favorites');
   }
 
   Future<Set<String>> getAllFavoriteWords() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getStringList(_kWebFavoritesKey) ?? []).toSet();
+    }
     final db = await database;
     final res = await db.query('favorites', columns: ['word']);
     return res.map((r) => r['word'].toString()).toSet();
   }
 
   Future<List<PictureWordEntry>> getFavoriteEntries() async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final prefs = await SharedPreferences.getInstance();
+      final words = prefs.getStringList(_kWebFavoritesKey) ?? [];
+      final List<PictureWordEntry> list = [];
+      for (final w in words.reversed) {
+        final entry = _webEntriesMap[normalizeWord(w)];
+        if (entry != null) {
+          list.add(entry);
+        } else {
+          list.add(PictureWordEntry(
+            word: w,
+            partOfSpeech: 'Word',
+            englishMeaning: 'Favorited word',
+            synonyms: const [],
+            antonyms: const [],
+            imageUrl: 'assets/images/app_logo.png',
+            category: 'Favorites',
+          ));
+        }
+      }
+      return list;
+    }
     final db = await database;
     final res = await db.rawQuery('''
       SELECT p.*, f.word AS fav_word
@@ -1114,6 +1341,15 @@ class PictureDatabaseService {
   Future<void> addToHistory(String word) async {
     final clean = word.trim();
     if (clean.isEmpty) return;
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kWebHistoryKey) ?? [];
+      list.removeWhere((w) => w.toLowerCase() == clean.toLowerCase());
+      list.insert(0, clean);
+      if (list.length > 200) list.removeLast();
+      await prefs.setStringList(_kWebHistoryKey, list);
+      return;
+    }
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.rawInsert('''
@@ -1125,6 +1361,13 @@ class PictureDatabaseService {
   Future<void> removeFromHistory(String word) async {
     final clean = word.trim();
     if (clean.isEmpty) return;
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kWebHistoryKey) ?? [];
+      list.removeWhere((w) => w.toLowerCase() == clean.toLowerCase());
+      await prefs.setStringList(_kWebHistoryKey, list);
+      return;
+    }
     final db = await database;
     await db.delete(
       'history',
@@ -1134,11 +1377,39 @@ class PictureDatabaseService {
   }
 
   Future<void> clearAllHistory() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kWebHistoryKey);
+      return;
+    }
     final db = await database;
     await db.delete('history');
   }
 
   Future<List<PictureWordEntry>> getHistoryEntries() async {
+    if (kIsWeb) {
+      await _ensureWebInitialized();
+      final prefs = await SharedPreferences.getInstance();
+      final words = prefs.getStringList(_kWebHistoryKey) ?? [];
+      final List<PictureWordEntry> list = [];
+      for (final w in words) {
+        final entry = _webEntriesMap[normalizeWord(w)];
+        if (entry != null) {
+          list.add(entry);
+        } else {
+          list.add(PictureWordEntry(
+            word: w,
+            partOfSpeech: 'Word',
+            englishMeaning: 'Viewed word',
+            synonyms: const [],
+            antonyms: const [],
+            imageUrl: 'assets/images/app_logo.png',
+            category: 'History',
+          ));
+        }
+      }
+      return list;
+    }
     final db = await database;
     final res = await db.rawQuery('''
       SELECT p.*, h.word AS hist_word
