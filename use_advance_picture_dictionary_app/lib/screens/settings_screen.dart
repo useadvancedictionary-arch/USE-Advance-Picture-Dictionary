@@ -861,7 +861,7 @@ class _AddEditWordScreenState extends State<_AddEditWordScreen> {
       }
 
       // Sync word & picture to Firebase Firestore for ALL users
-      FirestoreSyncService.instance.pushPictureEntry(entry);
+      await FirestoreSyncService.instance.pushPictureEntry(entry);
 
       if (!mounted) return;
       Navigator.pop(context, true);

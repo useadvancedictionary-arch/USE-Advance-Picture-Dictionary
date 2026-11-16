@@ -5,9 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/picture_word_entry.dart';
+import 'image_optimizer.dart';
 import 'picture_database_service.dart';
 
 /// Result object for sync operations.
@@ -96,9 +98,23 @@ class FirestoreSyncService {
       final req = await client.patchUrl(Uri.parse(url)).timeout(const Duration(seconds: 25));
       req.headers.set('Content-Type', 'application/json');
       final payload = _toFirestoreRestPayload(data);
-      req.add(utf8.encode(jsonEncode(payload)));
+      final jsonBytes = utf8.encode(jsonEncode(payload));
+
+      if (jsonBytes.length > 1024 * 1024) {
+        debugPrint('_pushToFirestoreRest REJECT: payload for $docId is ${jsonBytes.length} bytes (exceeds 1MB limit)!');
+        return false;
+      }
+
+      req.add(jsonBytes);
       final res = await req.close().timeout(const Duration(seconds: 35));
-      return res.statusCode >= 200 && res.statusCode < 300;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        debugPrint('_pushToFirestoreRest SUCCESS for $docId (${(jsonBytes.length / 1024).toStringAsFixed(1)} KB)');
+        return true;
+      } else {
+        final body = await res.transform(utf8.decoder).join();
+        debugPrint('_pushToFirestoreRest FAILED for $docId: ${res.statusCode} -> $body');
+        return false;
+      }
     } catch (e) {
       debugPrint('_pushToFirestoreRest error for $docId: $e');
       return false;
@@ -107,15 +123,21 @@ class FirestoreSyncService {
     }
   }
 
-  /// Reads local image file into base64 string if it exists on disk.
+  /// Reads local image file into safe Base64 string, auto-compressing if needed.
   String? _getLocalImageBase64(String? path) {
     if (path == null || path.trim().isEmpty) return null;
     try {
       final file = File(path.trim());
       if (file.existsSync()) {
-        final bytes = file.readAsBytesSync();
-        if (bytes.isNotEmpty) {
-          return base64Encode(bytes);
+        return ImageOptimizer.fileToBase64Safe(file.path);
+      }
+      // Check fallback custom_cards directory on Windows
+      final fallbackDir = Directory(r'C:\Users\Dell\Documents\USE_Advance_Picture_Dictionary\custom_cards');
+      if (fallbackDir.existsSync()) {
+        final fileName = file.uri.pathSegments.last;
+        final candidate = File('${fallbackDir.path}/$fileName');
+        if (candidate.existsSync()) {
+          return ImageOptimizer.fileToBase64Safe(candidate.path);
         }
       }
     } catch (e) {
@@ -441,9 +463,9 @@ class FirestoreSyncService {
   }
 
   /// Sync picture entries from Firestore into the local SQLite database.
-  /// Uses direct HTTP REST streaming in small pages of 10 documents.
-  /// Works reliably on all platforms (Android, Windows, iOS) without gRPC timeouts,
-  /// skipping already-downloaded cards for ultra-fast incremental updates.
+  /// Uses direct HTTP REST streaming in pages of 100 documents for rapid sync.
+  /// Intelligently updates cards when cloud has newer versions, while strictly
+  /// protecting any newer local edits so they never get lost.
   Future<SyncResult> syncPictureEntriesToLocal({
     bool forceFullSync = false,
     void Function(int count, String currentWord)? onProgress,
@@ -459,10 +481,10 @@ class FirestoreSyncService {
 
       int addedOrUpdated = 0;
       int deletedCount = 0;
-      const int batchPageSize = 10;
+      const int batchPageSize = 100;
 
       final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 15);
+      client.connectionTimeout = const Duration(seconds: 20);
 
       try {
         String? pageToken;
@@ -474,8 +496,8 @@ class FirestoreSyncService {
             url += '&pageToken=$pageToken';
           }
 
-          final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 25));
-          final res = await req.close().timeout(const Duration(seconds: 25));
+          final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 30));
+          final res = await req.close().timeout(const Duration(seconds: 35));
 
           if (res.statusCode == 200) {
             final body = await res.transform(utf8.decoder).join();
@@ -491,39 +513,81 @@ class FirestoreSyncService {
               if (data['deleted'] == true) {
                 await db.deleteEntryByWord(word);
                 deletedCount++;
-              } else {
-                final sanitized = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
-                final localCardFile = File('${cardsDir.path}/${sanitized}_card.png');
-
-                final b64 = data['image_base64']?.toString();
-                final hasValidCloudB64 = b64 != null && b64.length > 500;
-
-                final fileExists = localCardFile.existsSync();
-                final isCorruptLocal = fileExists && localCardFile.lengthSync() < 500;
-
-                // Decode cloud base64 if local file missing, corrupt, or full resync requested
-                if (hasValidCloudB64 && (!fileExists || isCorruptLocal || forceFullSync)) {
-                  try {
-                    final bytes = base64Decode(b64);
-                    if (bytes.length > 500) {
-                      await localCardFile.writeAsBytes(bytes, flush: true);
-                      data['image_url'] = localCardFile.path;
-                      data['thumbnail_url'] = localCardFile.path;
-                    }
-                  } catch (e) {
-                    debugPrint('Error writing card file for $word: $e');
-                  }
-                } else if (fileExists && !isCorruptLocal) {
-                  data['image_url'] = localCardFile.path;
-                  data['thumbnail_url'] = localCardFile.path;
-                }
-
-                data.remove('image_base64');
-                final entry = _firestoreDataToPictureEntry(data);
-                await db.insertOrUpdateEntry(entry);
-                addedOrUpdated++;
-                onProgress?.call(addedOrUpdated, word);
+                continue;
               }
+
+              // Cloud updatedAt timestamp
+              DateTime? cloudUpdatedAt;
+              if (data['updatedAt'] != null) {
+                try {
+                  cloudUpdatedAt = DateTime.tryParse(data['updatedAt'].toString());
+                } catch (_) {}
+              }
+
+              // ── PROTECTION: Never overwrite newer local user edits ──
+              final existingLocal = await db.getEntryByWord(word);
+              if (!forceFullSync && existingLocal != null && cloudUpdatedAt != null) {
+                final localPath = existingLocal.imageUrl.trim();
+                if (localPath.isNotEmpty && !localPath.startsWith('http') && !localPath.startsWith('assets/')) {
+                  final f = File(localPath);
+                  if (f.existsSync()) {
+                    final mtime = f.lastModifiedSync();
+                    // If local custom card was edited locally AFTER cloud, protect local and push to cloud
+                    if (mtime.isAfter(cloudUpdatedAt.add(const Duration(seconds: 5)))) {
+                      debugPrint('Preserving newer local edit for "$word" (local: $mtime > cloud: $cloudUpdatedAt)');
+                      _pushLocalEditToCloud(existingLocal);
+                      continue;
+                    }
+                  }
+                }
+              }
+
+              final sanitized = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+              final localCardFile = File('${cardsDir.path}/${sanitized}_card.png');
+
+              final b64 = data['image_base64']?.toString();
+              final hasValidCloudB64 = b64 != null && b64.length > 500;
+
+              final fileExists = localCardFile.existsSync();
+              final isCorruptLocal = fileExists && localCardFile.lengthSync() < 500;
+              final localFileMtime = fileExists ? localCardFile.lastModifiedSync() : null;
+
+              // Overwrite local card file if:
+              // - File is missing or corrupt
+              // - forceFullSync is requested
+              // - Cloud timestamp is NEWER than local file timestamp (new picture from another device/admin)
+              bool shouldWriteCloudCard = false;
+              if (hasValidCloudB64) {
+                if (!fileExists || isCorruptLocal || forceFullSync) {
+                  shouldWriteCloudCard = true;
+                } else if (cloudUpdatedAt != null && localFileMtime != null && cloudUpdatedAt.isAfter(localFileMtime.add(const Duration(seconds: 2)))) {
+                  shouldWriteCloudCard = true;
+                }
+              }
+
+              if (shouldWriteCloudCard && hasValidCloudB64) {
+                try {
+                  final bytes = base64Decode(b64);
+                  if (bytes.length > 500) {
+                    await localCardFile.writeAsBytes(bytes, flush: true);
+                    data['image_url'] = localCardFile.path;
+                    data['thumbnail_url'] = localCardFile.path;
+                    PaintingBinding.instance.imageCache.clear();
+                    PaintingBinding.instance.imageCache.clearLiveImages();
+                  }
+                } catch (e) {
+                  debugPrint('Error writing card file for $word: $e');
+                }
+              } else if (fileExists && !isCorruptLocal) {
+                data['image_url'] = localCardFile.path;
+                data['thumbnail_url'] = localCardFile.path;
+              }
+
+              data.remove('image_base64');
+              final entry = _firestoreDataToPictureEntry(data);
+              await db.insertOrUpdateEntry(entry);
+              addedOrUpdated++;
+              onProgress?.call(addedOrUpdated, word);
             }
           } else {
             debugPrint('Firestore REST sync page $pageNumber error: status ${res.statusCode}');
@@ -550,6 +614,17 @@ class FirestoreSyncService {
         message: 'Sync failed: $e',
       );
     }
+  }
+
+  void _pushLocalEditToCloud(PictureWordEntry entry) {
+    Future.microtask(() async {
+      try {
+        await pushPictureEntry(entry);
+        debugPrint('Auto-synced newer local edit for "${entry.word}" to cloud ✓');
+      } catch (e) {
+        debugPrint('Auto-sync newer local edit failed: $e');
+      }
+    });
   }
 
   Map<String, dynamic> _pictureEntryToFirestoreMap(
@@ -676,8 +751,12 @@ class FirestoreSyncService {
       }
 
       try {
-        final bytes = await localFile.readAsBytes();
-        final b64 = base64Encode(bytes);
+        final b64 = ImageOptimizer.fileToBase64Safe(localFile.path);
+        if (b64 == null) {
+          failed++;
+          failedWords.add(entry.word);
+          continue;
+        }
         final ok = await pushPictureEntry(entry, imageBase64: b64);
 
         if (ok) {

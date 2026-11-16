@@ -9,8 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import '../models/picture_word_entry.dart';
 import '../services/picture_database_service.dart';
 import '../services/firestore_sync_service.dart';
-import '../services/cloud_image_service.dart';
 import '../services/card_asset_pack_service.dart';
+import '../services/image_optimizer.dart';
 
 class PictureCropEditorScreen extends StatefulWidget {
   final PictureWordEntry entry;
@@ -218,7 +218,8 @@ class _PictureCropEditorScreenState extends State<PictureCropEditorScreen> {
         throw Exception('Failed to encode cropped image to PNG');
       }
 
-      final pngBytes = byteData.buffer.asUint8List();
+      final rawPngBytes = byteData.buffer.asUint8List();
+      final optimizedBytes = ImageOptimizer.optimizeBytes(rawPngBytes);
 
       // Save to application directory
       final appDir = await getApplicationDocumentsDirectory();
@@ -231,10 +232,10 @@ class _PictureCropEditorScreenState extends State<PictureCropEditorScreen> {
 
       final safeName = widget.entry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = p.join(customCardsDir.path, '${safeName}_card_$timestamp.png');
+      final filePath = p.join(customCardsDir.path, '${safeName}_card_$timestamp.jpg');
 
       final file = File(filePath);
-      await file.writeAsBytes(pngBytes, flush: true);
+      await file.writeAsBytes(optimizedBytes, flush: true);
 
       // Invalidate Flutter image cache so the newly cropped image renders immediately
       PaintingBinding.instance.imageCache.clear();
@@ -247,23 +248,14 @@ class _PictureCropEditorScreenState extends State<PictureCropEditorScreen> {
       );
       await PictureDatabaseService.instance.updateEntry(updatedEntry);
 
-      // Upload cropped image to Firebase Cloud Storage & Firestore in background for all users
+      // Upload optimized cropped image to Firestore in background for all users
       () async {
         try {
-          final cloudUrl = await CloudImageService.instance.uploadImageBytes(
-            pngBytes,
-            word: widget.entry.word,
-            format: 'png',
-          );
-          if (cloudUrl != null && cloudUrl.isNotEmpty) {
-            final cloudEntry = updatedEntry.copyWith(
-              imageUrl: cloudUrl,
-              thumbnailUrl: cloudUrl,
-            );
-            await FirestoreSyncService.instance.pushPictureEntry(cloudEntry);
-            debugPrint('Cropped image synced to cloud for ${widget.entry.word}: $cloudUrl');
+          final ok = await FirestoreSyncService.instance.pushPictureEntry(updatedEntry);
+          if (ok) {
+            debugPrint('Cropped card synced to cloud for ${widget.entry.word} ✓');
           } else {
-            await FirestoreSyncService.instance.pushPictureEntry(updatedEntry);
+            debugPrint('Cloud sync attempt finished for ${widget.entry.word}');
           }
         } catch (e) {
           debugPrint('Error syncing cropped image to cloud: $e');

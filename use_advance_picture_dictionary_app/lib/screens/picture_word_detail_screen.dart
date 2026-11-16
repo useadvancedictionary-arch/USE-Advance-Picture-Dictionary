@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../models/picture_word_entry.dart';
 import '../services/interlink_service.dart';
@@ -15,6 +16,7 @@ import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import '../services/firestore_sync_service.dart';
 import '../services/cloud_image_service.dart';
+import '../services/image_optimizer.dart';
 import '../services/smart_auto_tagger.dart';
 import '../services/card_asset_pack_service.dart';
 import '../services/freemium_gatekeeper.dart';
@@ -286,15 +288,28 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
       });
 
       final file = File(path);
-      final cloudUrl = await CloudImageService.instance.uploadLocalFile(
-        file,
-        word: _currentEntry.word,
-      );
+      final optimizedBytes = ImageOptimizer.optimizeFile(file);
 
-      final finalUrl = cloudUrl ?? path;
+      final appDir = await getApplicationDocumentsDirectory();
+      final customCardsDir = Directory(
+        p.join(appDir.path, 'USE_Advance_Picture_Dictionary', 'custom_cards'),
+      );
+      if (!customCardsDir.existsSync()) {
+        await customCardsDir.create(recursive: true);
+      }
+
+      final safeName = _currentEntry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final savedFile = File(p.join(customCardsDir.path, '${safeName}_card_$timestamp.jpg'));
+      if (optimizedBytes != null) {
+        await savedFile.writeAsBytes(optimizedBytes, flush: true);
+      } else {
+        await file.copy(savedFile.path);
+      }
+
       final updatedEntry = _currentEntry.copyWith(
-        imageUrl: finalUrl,
-        thumbnailUrl: finalUrl,
+        imageUrl: savedFile.path,
+        thumbnailUrl: savedFile.path,
       );
 
       await PictureDatabaseService.instance.insertOrUpdateEntry(updatedEntry);
