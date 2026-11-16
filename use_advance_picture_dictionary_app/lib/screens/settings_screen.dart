@@ -1207,7 +1207,7 @@ class _ManageWordsScreenState extends State<_ManageWordsScreen> {
     if (confirmed == true && entry.id != null) {
       await PictureDatabaseService.instance.deleteEntry(entry.id!);
       // Sync deletion across all users
-      FirestoreSyncService.instance.deletePictureEntry(entry.word);
+      await FirestoreSyncService.instance.deletePictureEntry(entry.word);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('"${entry.word}" deleted and synced to all users')),

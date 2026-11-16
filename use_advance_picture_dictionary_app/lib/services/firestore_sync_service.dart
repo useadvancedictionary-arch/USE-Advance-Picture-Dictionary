@@ -512,6 +512,15 @@ class FirestoreSyncService {
 
               if (data['deleted'] == true) {
                 await db.deleteEntryByWord(word);
+                final sanitized = word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+                final localCardFile = File('${cardsDir.path}/${sanitized}_card.png');
+                if (localCardFile.existsSync()) {
+                  try {
+                    localCardFile.deleteSync();
+                  } catch (_) {}
+                }
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
                 deletedCount++;
                 continue;
               }
