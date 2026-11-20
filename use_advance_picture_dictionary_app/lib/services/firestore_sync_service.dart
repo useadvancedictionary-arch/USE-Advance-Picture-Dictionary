@@ -579,6 +579,12 @@ class FirestoreSyncService {
                   final bytes = base64Decode(b64);
                   if (bytes.length > 500) {
                     await localCardFile.writeAsBytes(bytes, flush: true);
+                    // ── KEY FIX: Set file mtime = cloudUpdatedAt so the local-protection
+                    // check never sees this freshly-written file as "newer than cloud"
+                    // and blocks future admin updates on this device.
+                    if (cloudUpdatedAt != null) {
+                      try { await localCardFile.setLastModified(cloudUpdatedAt); } catch (_) {}
+                    }
                     data['image_url'] = localCardFile.path;
                     data['thumbnail_url'] = localCardFile.path;
                     PaintingBinding.instance.imageCache.clear();
@@ -735,11 +741,16 @@ class FirestoreSyncService {
       File localFile = File(entry.imageUrl.trim());
       if (!localFile.existsSync()) {
         final sanitized = entry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
-        final candidate = File('${fallbackDir.path}/${sanitized}_card.png');
-        if (candidate.existsSync()) {
-          localFile = candidate;
+        // Check canonical .jpg first (new saves), then .png (older saves)
+        final candidateJpg = File('${fallbackDir.path}/${sanitized}_card.jpg');
+        final candidatePng = File('${fallbackDir.path}/${sanitized}_card.png');
+        if (candidateJpg.existsSync()) {
+          localFile = candidateJpg;
+        } else if (candidatePng.existsSync()) {
+          localFile = candidatePng;
         } else {
           try {
+            // Last resort: pick newest timestamped variant
             final matches = fallbackDir.listSync().whereType<File>().where((f) {
               final name = f.uri.pathSegments.last.toLowerCase();
               return name.startsWith('${sanitized}_card');

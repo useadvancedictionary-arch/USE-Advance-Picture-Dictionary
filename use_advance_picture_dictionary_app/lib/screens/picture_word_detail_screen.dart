@@ -299,8 +299,8 @@ class _PictureWordDetailScreenState extends State<PictureWordDetailScreen> {
       }
 
       final safeName = _currentEntry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final savedFile = File(p.join(customCardsDir.path, '${safeName}_card_$timestamp.jpg'));
+      // Use canonical filename (no timestamp) so sync can find and overwrite reliably on all devices
+      final savedFile = File(p.join(customCardsDir.path, '${safeName}_card.jpg'));
       if (optimizedBytes != null) {
         await savedFile.writeAsBytes(optimizedBytes, flush: true);
       } else {

@@ -231,8 +231,8 @@ class _PictureCropEditorScreenState extends State<PictureCropEditorScreen> {
       }
 
       final safeName = widget.entry.word.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = p.join(customCardsDir.path, '${safeName}_card_$timestamp.jpg');
+      // Use canonical filename (no timestamp) so sync can find and overwrite reliably on all devices
+      final filePath = p.join(customCardsDir.path, '${safeName}_card.jpg');
 
       final file = File(filePath);
       await file.writeAsBytes(optimizedBytes, flush: true);
